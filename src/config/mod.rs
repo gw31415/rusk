@@ -19,12 +19,13 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
 use std::collections::HashMap;
 
 mod script;
+mod task;
 mod task_settings;
 pub use script::*;
+pub use task::*;
 pub use task_settings::*;
 
 /// Rusk config file.
@@ -32,16 +33,4 @@ pub use task_settings::*;
 pub struct Config {
     /// Pairs of Names and Tasks.
     pub tasks: HashMap<String, Task>,
-}
-
-#[serde_as]
-#[derive(Serialize, Deserialize)]
-/// One indivisual Task.
-pub struct Task {
-    /// The script that describes the operation of the task.
-    #[serde_as(as = "DisplayFromStr")]
-    pub script: Script,
-    /// Task behavior settings.
-    #[serde(flatten)]
-    pub config: TaskSettings,
 }

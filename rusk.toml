@@ -1,0 +1,20 @@
+[tasks.aaa]
+script = '''
+#!@deno
+let hello = "Hello, world!";
+console.log(hello);
+'''
+
+[tasks.keys]
+script = '''
+#!@deno
+let hello = "Hello, world!";
+console.log(hello);
+'''
+
+[tasks.help]
+script = '''
+#!@deno
+let hello = "Hello, world!";
+console.log(hello);
+'''

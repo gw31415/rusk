@@ -30,7 +30,7 @@ pub use task_settings::*;
 
 /// Rusk config file.
 #[derive(Serialize, Deserialize)]
-pub struct Config {
+pub struct RuskFileContent {
     /// Pairs of Names and Tasks.
     pub tasks: HashMap<String, Task>,
 }

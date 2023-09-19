@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Task behavior settings.
 pub struct TaskSettings {
     /// Deno behavior settings.
+    #[serde(default)]
     pub deno: DenoSettings,
 }
 

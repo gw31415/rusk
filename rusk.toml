@@ -1,20 +1,21 @@
 [tasks.aaa]
 script = '''
 #!@deno
-let hello = "Hello, world!";
+const hello = "Task aaa";
 console.log(hello);
 '''
 
 [tasks.keys]
 script = '''
 #!@deno
-let hello = "Hello, world!";
+const hello = "Task keys";
 console.log(hello);
 '''
 
 [tasks.help]
+depends = ["keys", "aaa"]
 script = '''
 #!@deno
-let hello = "Hello, world!";
+const hello = "Task help";
 console.log(hello);
 '''

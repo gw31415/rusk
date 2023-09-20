@@ -29,7 +29,7 @@ impl Task {
         let Script { code, r#type } = script;
         match r#type {
             ScriptType::Deno => {
-                let TaskSettings { deno } = config;
+                let TaskSettings { deno, .. } = config;
                 let DenoSettings { permissions } = deno;
                 let mut worker = MainWorker::bootstrap_from_options(
                     Url::from_file_path(std::fs::canonicalize(path)?).unwrap(),
@@ -77,12 +77,12 @@ mod moduleloader {
     use deno_ast::{parse_module, EmitOptions, ParseParams, SourceTextInfo};
     use deno_runtime::{
         deno_core::{
-            anyhow::Error, error::generic_error, resolve_import, FastString, ModuleLoader,
-            ModuleSource, ModuleSourceFuture, ModuleSpecifier, ModuleType, ResolutionKind,
+            anyhow::Error, error::generic_error, futures::future::FutureExt, resolve_import,
+            FastString, ModuleLoader, ModuleSource, ModuleSourceFuture, ModuleSpecifier,
+            ModuleType, ResolutionKind,
         },
         deno_fetch::create_http_client,
     };
-    use futures::future::FutureExt;
     use std::future::Future;
     use std::pin::Pin;
 

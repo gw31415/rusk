@@ -1,15 +1,13 @@
 [tasks.setupA]
 script = '''
 #!@deno
-
-console.log("setupA");
+console.log("Dependencies: setupA done.");
 '''
 
 [tasks.setupB]
 script = '''
 #!@deno
-
-console.log("setupB");
+console.log("Dependencies: setupB done.");
 '''
 
 [tasks.help]
@@ -17,8 +15,9 @@ depends = ["setupA", "setupB"]
 script = '''
 #!@deno
 import { external } from "./external.ts";
-for (const entry of Deno.readDirSync(".")) {
-  console.log(entry.name);
+console.log(`Files around ${import.meta.url}:`)
+for (const entry of Deno.readDirSync(new URL(".", import.meta.url))) {
+  console.log(` - ${entry.name}`);
 }
 external("module loaded.");
 console.log("Done!");

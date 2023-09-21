@@ -1,3 +1,3 @@
 export function external(msg: string) {
-  console.log(`external: ${msg}`);
+  console.log(`External: ${msg}`);
 }

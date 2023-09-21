@@ -1,12 +1,17 @@
-use deno_runtime::{tokio_util, deno_core::error::AnyError};
+use deno_runtime::tokio_util;
 use rusk::compose::Composer;
 
 fn main() {
     tokio_util::create_basic_runtime().block_on(async {
+        println!("================= Deps tree =================");
         let composer = Composer::new(".").await;
-        for name in composer.task_names() {
-            println!("{name}");
+        for (a, deps) in composer.get_deptree("help").unwrap() {
+            println!("- {a}");
+            for d in deps {
+                println!("  └ {d} ");
+            }
         }
+        println!("================== Started ==================");
         composer.execute("help").await
     }).unwrap();
 }

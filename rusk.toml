@@ -1,21 +1,21 @@
-[tasks.aaa]
+[tasks.setupA]
 script = '''
 #!@deno
-const hello = "Task aaa";
-console.log(hello);
+
+console.log("setupA");
 '''
 
-[tasks.keys]
+[tasks.setupB]
 script = '''
 #!@deno
-const hello = "Task keys";
-console.log(hello);
+
+console.log("setupB");
 '''
 
 [tasks.help]
-depends = ["keys", "aaa"]
+depends = ["setupA", "setupB"]
 script = '''
 #!@deno
-const hello = "Task help";
-console.log(hello);
+
+console.log("Done!");
 '''

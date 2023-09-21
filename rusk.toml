@@ -16,7 +16,13 @@ console.log("setupB");
 depends = ["setupA", "setupB"]
 script = '''
 #!@deno
-import {external} from "./external.ts";
-external();
+import { external } from "./external.ts";
+for (const entry of Deno.readDirSync(".")) {
+  console.log(entry.name);
+}
+external("module loaded.");
 console.log("Done!");
 '''
+
+[tasks.help.deno]
+allow_read = ["."]

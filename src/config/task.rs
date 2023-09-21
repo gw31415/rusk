@@ -3,11 +3,12 @@ use super::DenoSettings;
 use super::{script::Script, ScriptType};
 use deno_runtime::{
     deno_core::{error::AnyError, url::Url},
-    permissions::PermissionsContainer,
+    permissions::{Permissions, PermissionsContainer},
     worker::{MainWorker, WorkerOptions},
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
+use std::fs::canonicalize;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -31,11 +32,10 @@ impl Task {
             ScriptType::Deno => {
                 let TaskSettings { deno, .. } = config;
                 let DenoSettings { permissions } = deno;
+                let url = Url::from_file_path(canonicalize(path)?).unwrap();
                 let mut worker = MainWorker::bootstrap_from_options(
-                    Url::from_file_path(std::fs::canonicalize(path)?).unwrap(),
-                    PermissionsContainer::new(
-                        deno_runtime::permissions::Permissions::from_options(permissions)?,
-                    ),
+                    Url::from_directory_path(canonicalize(std::env::current_dir()?)?).unwrap(),
+                    PermissionsContainer::new(Permissions::from_options(permissions)?),
                     WorkerOptions {
                         module_loader: Rc::new(moduleloader::XTaskModuleLoader),
                         ..Default::default()
@@ -44,7 +44,7 @@ impl Task {
                 let id = worker
                     .js_runtime
                     .load_main_module(
-                        &Url::from_file_path(std::fs::canonicalize(path)?).unwrap(),
+                        &url,
                         Some(deno_runtime::deno_core::FastString::Owned(
                             code.to_owned().into_boxed_str(),
                         )),

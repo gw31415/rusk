@@ -16,6 +16,7 @@ console.log("setupB");
 depends = ["setupA", "setupB"]
 script = '''
 #!@deno
-
+import {external} from "./external.ts";
+external();
 console.log("Done!");
 '''

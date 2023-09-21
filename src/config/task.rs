@@ -41,14 +41,19 @@ impl Task {
                         ..Default::default()
                     },
                 );
-                worker.execute_script(
-                    "rusk.ts",
-                    deno_runtime::deno_core::FastString::Owned(code.to_owned().into_boxed_str()),
-                )?;
-                worker.run_event_loop(false).await?;
-                Ok(())
+                let id = worker
+                    .js_runtime
+                    .load_main_module(
+                        &Url::from_file_path(std::fs::canonicalize(path)?).unwrap(),
+                        Some(deno_runtime::deno_core::FastString::Owned(
+                            code.to_owned().into_boxed_str(),
+                        )),
+                    )
+                    .await?;
+                worker.evaluate_module(id).await?;
             }
         }
+        Ok(())
     }
 }
 

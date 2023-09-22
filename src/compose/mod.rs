@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::Read,
-    path::PathBuf,
+    path::{PathBuf, Path},
     sync::{Arc, Mutex},
 };
 
@@ -21,7 +21,7 @@ pub struct Composer {
     tasks: HashMap<String, Vec<(Task, Arc<PathBuf>)>>,
 }
 
-const CONFIG_NAME: &str = "rusk.toml";
+pub const RUSK_FILE: &str = "rusk.toml";
 
 mod job {
     use std::{future::Future, pin::Pin};
@@ -141,7 +141,7 @@ impl Composer {
         self.tasks.keys().collect()
     }
     /// Initialize Composer with given path.
-    pub async fn new(path: &str) -> Self {
+    pub async fn new(path: impl AsRef<Path>) -> Self {
         let configfiles = {
             let configfiles: Arc<Mutex<Vec<_>>> = Default::default();
             WalkBuilder::new(path)
@@ -152,7 +152,7 @@ impl Composer {
                     Box::new(|res| {
                         if let Ok(entry) = res {
                             if let Some(ft) = entry.file_type() {
-                                if ft.is_file() && entry.file_name() == CONFIG_NAME {
+                                if ft.is_file() && entry.file_name() == RUSK_FILE {
                                     configfiles.lock().unwrap().push({
                                         let path = entry.path().to_path_buf();
                                         // make Future of Config

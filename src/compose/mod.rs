@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::Read,
-    path::{PathBuf, Path},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 

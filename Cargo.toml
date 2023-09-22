@@ -4,15 +4,15 @@ edition = "2021"
 version = "0.1.0"
 
 [dependencies]
-deno_ast = { version = "0.27.3", features = ["transpiling"] }
-deno_runtime = "0.122.0"
+deno_ast = { version = "0.28.0", features = ["transpiling"] }
+deno_runtime = "0.125.0"
 ignore = "0.4.20"
-serde_with = "3.2.0"
-thiserror = "1.0.44"
-toml = "0.7.6"
+serde_with = "3.3.0"
+thiserror = "1.0.48"
+toml = "0.8.0"
 
 [dependencies.serde]
-version = "1.0.183"
+version = "1.0.188"
 features = ["std", "serde_derive"]
 default-features = false
 

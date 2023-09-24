@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
-    io::Read,
+    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -159,10 +159,10 @@ impl Composer {
                                         async {
                                             (|| -> Result<_, AnyError> {
                                                 // Read file & deserialize into Config
-                                                let mut config = Default::default();
-                                                File::open(&path)?.read_to_string(&mut config)?;
+                                                let content_str =
+                                                    io::read_to_string(File::open(&path)?)?;
                                                 let content: RuskFileContent =
-                                                    toml::from_str(&config)?;
+                                                    toml::from_str(&content_str)?;
                                                 Ok((path, content))
                                             })()
                                             .ok()

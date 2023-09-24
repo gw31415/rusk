@@ -9,7 +9,7 @@ use deno_runtime::deno_core::{
     },
 };
 
-use crate::config::Task;
+use crate::config::{Task, TaskName};
 
 /// A Job that executes a single Task, with dependencies set before execution.
 pub struct Job {
@@ -23,12 +23,12 @@ pub struct Job {
 /// A Task to have in a Job, caching the results of depends and preventing deep copying of Tasks with Rc.
 pub struct TaskBuf {
     task: Rc<Task>,
-    depends: OnceCell<HashSet<String>>,
+    depends: OnceCell<HashSet<TaskName>>,
 }
 
 impl TaskBuf {
     /// List of Task names that directly depend on that Task(-Buf)
-    pub fn get_depends(&self) -> &HashSet<String> {
+    pub fn get_depends(&self) -> &HashSet<TaskName> {
         self.depends.get_or_init(|| {
             self.task
                 .iter()

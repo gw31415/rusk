@@ -14,12 +14,12 @@ use deno_runtime::deno_core::{
 };
 use ignore::WalkBuilder;
 
-use crate::config::{RuskFileContent, Task};
+use crate::config::{RuskFileContent, Task, TaskName};
 
 use self::job::{Job, TaskBuf};
 
 pub struct Composer {
-    tasks: HashMap<String, TaskBuf>,
+    tasks: HashMap<TaskName, TaskBuf>,
 }
 
 pub const RUSKFILE: &str = "rusk.toml";
@@ -28,32 +28,32 @@ mod job;
 
 impl Composer {
     /// Perform a Task
-    pub async fn execute(&self, name: &str) -> Result<(), AnyError> {
+    pub async fn execute(&self, name: TaskName) -> Result<(), AnyError> {
         try_join_all(self.collect_jobs(name)?.map(|job| job.call())).await?;
         Ok(())
     }
 
     /// Obtain dependency structure
     // TODO: Circulation detection and error
-    pub fn get_deptree<'c>(
-        &'c self,
-        name: &str,
-    ) -> Result<HashMap<String, &'c HashSet<String>>, AnyError> {
-        let Some(task) = self.tasks.get(name) else {
+    pub fn get_deptree(
+        &self,
+        name: TaskName,
+    ) -> Result<HashMap<TaskName, &HashSet<TaskName>>, AnyError> {
+        let Some(task) = self.tasks.get(name.as_ref()) else {
             return Err(anyhow!("Task named {:?} not found.", name));
         };
         let primary_depends: &HashSet<_> = task.get_depends();
         let mut depends = primary_depends
             .iter()
             .try_fold(HashMap::new(), |mut parent, n| {
-                parent.extend(self.get_deptree(n)?);
+                parent.extend(self.get_deptree(n.clone())?);
                 Ok::<_, AnyError>(parent)
             })?;
-        depends.insert(name.to_owned(), primary_depends);
+        depends.insert(name, primary_depends);
         Ok(depends)
     }
 
-    fn collect_jobs(&self, name: &str) -> Result<impl Iterator<Item = Job>, AnyError> {
+    fn collect_jobs(&self, name: TaskName) -> Result<impl Iterator<Item = Job>, AnyError> {
         let mut res = HashMap::new();
         for (name, depends) in self.get_deptree(name)? {
             macro_rules! get_or_insert_mut_job {
@@ -77,7 +77,7 @@ impl Composer {
     }
 
     /// Get all task names.
-    pub fn task_names(&self) -> Vec<&String> {
+    pub fn task_names(&self) -> Vec<&TaskName> {
         self.tasks.keys().collect()
     }
     /// Initialize Composer with given path.
@@ -121,7 +121,7 @@ impl Composer {
                 .into_inner()
                 .unwrap()
         };
-        let mut tasks: HashMap<String, Task> = Default::default();
+        let mut tasks: HashMap<TaskName, Task> = Default::default();
         for (path, config) in join_all(configfiles).await.into_iter().flatten() {
             let path = Rc::new(path);
             for (name, task) in config.tasks {

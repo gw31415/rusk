@@ -30,7 +30,6 @@ fn get_root() -> io::Result<PathBuf> {
                     entry
                 }
                 .file_name()
-                .as_os_str()
                 .as_bytes(),
             )
         });

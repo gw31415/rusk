@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, collections::HashSet, sync::Arc};
+use std::{cell::OnceCell, collections::HashSet, rc::Rc};
 
 use deno_runtime::deno_core::{
     error::AnyError,
@@ -20,9 +20,9 @@ pub struct Job {
 }
 
 #[derive(Clone)]
-/// A Task to have in a Job, caching the results of depends and preventing deep copying of Tasks in Arc.
+/// A Task to have in a Job, caching the results of depends and preventing deep copying of Tasks with Rc.
 pub struct TaskBuf {
-    task: Arc<Task>,
+    task: Rc<Task>,
     depends: OnceCell<HashSet<String>>,
 }
 
@@ -38,7 +38,7 @@ impl TaskBuf {
     }
     pub fn new(task: Task) -> Self {
         Self {
-            task: Arc::new(task),
+            task: Rc::new(task),
             depends: OnceCell::new(),
         }
     }
@@ -70,9 +70,14 @@ impl Job {
         drop(self.my_sender);
         let _ = self.receiver.collect::<Vec<_>>().await;
         async move {
-            try_join_all(self.taskbuf.task.iter().map(|(atom, path)| atom.execute(path)))
-                .await
-                .and(Ok(()))
+            try_join_all(
+                self.taskbuf
+                    .task
+                    .iter()
+                    .map(|(atom, path)| atom.execute(path)),
+            )
+            .await
+            .and(Ok(()))
         }
         .await?;
         Ok(())

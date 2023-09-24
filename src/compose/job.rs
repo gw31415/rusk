@@ -11,25 +11,28 @@ use deno_runtime::deno_core::{
 
 use crate::config::Task;
 
+/// A Job that executes a single Task, with dependencies set before execution.
 pub struct Job {
     my_sender: UnboundedSender<()>,
     receiver: UnboundedReceiver<()>,
     next_jobs: Vec<UnboundedSender<()>>,
-    task: TaskBuf,
+    taskbuf: TaskBuf,
 }
 
 #[derive(Clone)]
+/// A Task to have in a Job, caching the results of depends and preventing deep copying of Tasks in Arc.
 pub struct TaskBuf {
     task: Arc<Task>,
     depends: OnceCell<HashSet<String>>,
 }
 
 impl TaskBuf {
+    /// List of Task names that directly depend on that Task(-Buf)
     pub fn get_depends(&self) -> &HashSet<String> {
         self.depends.get_or_init(|| {
             self.task
                 .iter()
-                .flat_map(|(task, _)| task.config.depends.clone())
+                .flat_map(|(atom, _)| atom.config.depends.clone())
                 .collect()
         })
     }
@@ -42,13 +45,13 @@ impl TaskBuf {
 }
 
 impl From<TaskBuf> for Job {
-    fn from(val: TaskBuf) -> Self {
+    fn from(taskbuf: TaskBuf) -> Self {
         let (my_sender, receiver) = mpsc::unbounded::<()>();
         Job {
             my_sender,
             next_jobs: Vec::new(),
             receiver,
-            task: val,
+            taskbuf,
         }
     }
 }
@@ -67,7 +70,7 @@ impl Job {
         drop(self.my_sender);
         let _ = self.receiver.collect::<Vec<_>>().await;
         async move {
-            try_join_all(self.task.task.iter().map(|(task, path)| task.execute(path)))
+            try_join_all(self.taskbuf.task.iter().map(|(atom, path)| atom.execute(path)))
                 .await
                 .and(Ok(()))
         }

@@ -22,7 +22,7 @@ pub struct Composer {
     tasks: HashMap<String, TaskBuf>,
 }
 
-pub const RUSK_FILE: &str = "rusk.toml";
+pub const RUSKFILE: &str = "rusk.toml";
 
 mod job;
 
@@ -92,7 +92,7 @@ impl Composer {
                     Box::new(|res| {
                         if let Ok(entry) = res {
                             if let Some(ft) = entry.file_type() {
-                                if ft.is_file() && entry.file_name() == RUSK_FILE {
+                                if ft.is_file() && entry.file_name() == RUSKFILE {
                                     configfiles.lock().unwrap().push({
                                         let path = entry.path().to_path_buf();
                                         // make Future of Config

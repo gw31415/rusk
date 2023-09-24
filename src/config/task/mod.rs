@@ -15,13 +15,14 @@ use std::fs::canonicalize;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+/// A Task that is the smallest unit of the sequential relationship, and is assigned a name in the RUSKFILE.
 pub type Task = Vec<(Atom, Rc<PathBuf>)>;
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
-/// One indivisual Task.
+/// Task elements corresponding to a single script.
 pub struct Atom {
-    /// The script that describes the operation of the task.
+    /// The script that describes the operation of the Atom.
     #[serde_as(as = "DisplayFromStr")]
     pub script: Script,
     /// Task behavior settings.

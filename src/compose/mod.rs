@@ -28,8 +28,8 @@ mod job;
 
 impl Composer {
     /// Perform a Task
-    pub async fn execute(&self, name: TaskName) -> Result<(), AnyError> {
-        try_join_all(self.collect_jobs(name)?.map(|job| job.call())).await?;
+    pub async fn execute(&self, name: impl Into<TaskName>) -> Result<(), AnyError> {
+        try_join_all(self.collect_jobs(name.into())?.map(|job| job.call())).await?;
         Ok(())
     }
 
@@ -37,9 +37,10 @@ impl Composer {
     // TODO: Circulation detection and error
     pub fn get_deptree(
         &self,
-        name: TaskName,
+        name: impl Into<TaskName>,
     ) -> Result<HashMap<TaskName, &HashSet<TaskName>>, AnyError> {
-        let Some(task) = self.tasks.get(name.as_ref()) else {
+        let name = name.into();
+        let Some(task) = self.tasks.get(&name) else {
             return Err(anyhow!("Task named {:?} not found.", name));
         };
         let primary_depends: &HashSet<_> = task.get_depends();

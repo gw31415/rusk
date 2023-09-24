@@ -22,6 +22,4 @@ for (const entry of Deno.readDirSync(new URL(".", import.meta.url))) {
 external("module loaded.");
 console.log("Done!");
 '''
-
-[tasks.help.deno]
-allow_read = ["."]
+deno = { allow_read = ["."] }

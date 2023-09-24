@@ -24,82 +24,7 @@ pub struct Composer {
 
 pub const RUSK_FILE: &str = "rusk.toml";
 
-mod job {
-    use std::{cell::OnceCell, collections::HashSet, sync::Arc};
-
-    use deno_runtime::deno_core::{
-        error::AnyError,
-        futures::{
-            channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
-            future::try_join_all,
-            StreamExt,
-        },
-    };
-
-    use crate::config::Task;
-
-    pub struct Job {
-        my_sender: UnboundedSender<()>,
-        receiver: UnboundedReceiver<()>,
-        next_jobs: Vec<UnboundedSender<()>>,
-        task: TaskBuf,
-    }
-
-    #[derive(Clone)]
-    pub struct TaskBuf {
-        task: Arc<Task>,
-        depends: OnceCell<HashSet<String>>,
-    }
-
-    impl TaskBuf {
-        pub fn get_depends(&self) -> &HashSet<String> {
-            self.depends.get_or_init(|| {
-                self.task
-                    .iter()
-                    .flat_map(|(task, _)| task.config.depends.clone())
-                    .collect()
-            })
-        }
-        pub fn new(task: Task) -> Self {
-            Self {
-                task: Arc::new(task),
-                depends: OnceCell::new(),
-            }
-        }
-    }
-
-    impl From<TaskBuf> for Job {
-        fn from(val: TaskBuf) -> Self {
-            let (my_sender, receiver) = mpsc::unbounded::<()>();
-            Job {
-                my_sender,
-                next_jobs: Vec::new(),
-                receiver,
-                task: val,
-            }
-        }
-    }
-
-    impl Job {
-        pub fn get_sender(&self) -> UnboundedSender<()> {
-            self.my_sender.clone()
-        }
-        pub fn dependedby(&mut self, dependents: UnboundedSender<()>) {
-            self.next_jobs.push(dependents);
-        }
-        pub async fn call(self) -> Result<(), AnyError> {
-            drop(self.my_sender);
-            let _ = self.receiver.collect::<Vec<_>>().await;
-            async move {
-                try_join_all(self.task.task.iter().map(|(task, path)| task.execute(path)))
-                    .await
-                    .and(Ok(()))
-            }
-            .await?;
-            Ok(())
-        }
-    }
-}
+mod job;
 
 impl Composer {
     /// Perform a Task
@@ -109,6 +34,7 @@ impl Composer {
     }
 
     /// Obtain dependency structure
+    // TODO: Circulation detection and error
     pub fn get_deptree<'c>(
         &'c self,
         name: &str,
@@ -120,14 +46,8 @@ impl Composer {
         let mut depends = primary_depends
             .iter()
             .try_fold(HashMap::new(), |mut parent, n| {
-                let subtree = self.get_deptree(n)?;
-                for children in subtree.values() {
-                    if children.contains(name) {
-                        return Err(anyhow!("Dependencies around {:?} are inappropriate.", name));
-                    }
-                }
-                parent.extend(subtree);
-                Ok(parent)
+                parent.extend(self.get_deptree(n)?);
+                Ok::<_, AnyError>(parent)
             })?;
         depends.insert(name.to_owned(), primary_depends);
         Ok(depends)

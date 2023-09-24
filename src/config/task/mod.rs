@@ -12,13 +12,15 @@ use deno_runtime::{
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::fs::canonicalize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+pub type Task = Vec<(Atom, Rc<PathBuf>)>;
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 /// One indivisual Task.
-pub struct Task {
+pub struct Atom {
     /// The script that describes the operation of the task.
     #[serde_as(as = "DisplayFromStr")]
     pub script: Script,
@@ -27,9 +29,9 @@ pub struct Task {
     pub config: TaskSettings,
 }
 
-impl Task {
+impl Atom {
     pub async fn execute(&self, path: &Path) -> Result<(), AnyError> {
-        let Task { script, config } = self;
+        let Atom { script, config } = self;
         let Script { code, r#type } = script;
         match r#type {
             ScriptType::Deno => {

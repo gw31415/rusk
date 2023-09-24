@@ -2,7 +2,8 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io,
-    path::{Path, PathBuf},
+    path::Path,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 
@@ -15,28 +16,68 @@ use ignore::WalkBuilder;
 
 use crate::config::{RuskFileContent, Task};
 
-use self::job::Job;
+use self::job::{Job, TaskBuf};
 
 pub struct Composer {
-    tasks: HashMap<String, Vec<(Task, Arc<PathBuf>)>>,
+    tasks: HashMap<String, TaskBuf>,
 }
 
 pub const RUSK_FILE: &str = "rusk.toml";
 
 mod job {
-    use std::{future::Future, pin::Pin};
+    use std::{cell::OnceCell, collections::HashSet, sync::Arc};
 
     use deno_runtime::deno_core::{
         error::AnyError,
         futures::{
             channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
+            future::try_join_all,
             StreamExt,
         },
     };
+
+    use crate::config::Task;
+
     pub struct Job {
         my_sender: UnboundedSender<()>,
-        dependedby: Vec<UnboundedSender<()>>,
         receiver: UnboundedReceiver<()>,
+        next_jobs: Vec<UnboundedSender<()>>,
+        task: TaskBuf,
+    }
+
+    #[derive(Clone)]
+    pub struct TaskBuf {
+        task: Arc<Task>,
+        depends: OnceCell<HashSet<String>>,
+    }
+
+    impl TaskBuf {
+        pub fn get_depends(&self) -> &HashSet<String> {
+            self.depends.get_or_init(|| {
+                self.task
+                    .iter()
+                    .flat_map(|(task, _)| task.config.depends.clone())
+                    .collect()
+            })
+        }
+        pub fn new(task: Task) -> Self {
+            Self {
+                task: Arc::new(task),
+                depends: OnceCell::new(),
+            }
+        }
+    }
+
+    impl From<TaskBuf> for Job {
+        fn from(val: TaskBuf) -> Self {
+            let (my_sender, receiver) = mpsc::unbounded::<()>();
+            Job {
+                my_sender,
+                next_jobs: Vec::new(),
+                receiver,
+                task: val,
+            }
+        }
     }
 
     impl Job {
@@ -44,25 +85,18 @@ mod job {
             self.my_sender.clone()
         }
         pub fn dependedby(&mut self, dependents: UnboundedSender<()>) {
-            self.dependedby.push(dependents);
+            self.next_jobs.push(dependents);
         }
-        pub async fn call(
-            self,
-            boxfuture: Pin<Box<impl Future<Output = Result<(), AnyError>>>>,
-        ) -> Result<(), AnyError> {
+        pub async fn call(self) -> Result<(), AnyError> {
             drop(self.my_sender);
             let _ = self.receiver.collect::<Vec<_>>().await;
-            boxfuture.await?;
-            Ok(())
-        }
-        pub fn new() -> Self {
-            let (my_sender, receiver): (UnboundedSender<()>, UnboundedReceiver<()>) =
-                mpsc::unbounded::<()>();
-            Job {
-                my_sender,
-                dependedby: Vec::new(),
-                receiver,
+            async move {
+                try_join_all(self.task.task.iter().map(|(task, path)| task.execute(path)))
+                    .await
+                    .and(Ok(()))
             }
+            .await?;
+            Ok(())
         }
     }
 }
@@ -70,48 +104,25 @@ mod job {
 impl Composer {
     /// Perform a Task
     pub async fn execute(&self, name: &str) -> Result<(), AnyError> {
-        let mut jobs = self.collect_jobs(name)?;
-        let futs = jobs
-            .keys()
-            .cloned()
-            .collect::<Vec<String>>()
-            .into_iter()
-            .map(|name| {
-                (
-                    name.clone(),
-                    Box::pin(async move {
-                        try_join_all(
-                            unsafe { self.tasks.get(&name).unwrap_unchecked() }
-                                .iter()
-                                .map(|(task, path)| task.execute(path)),
-                        )
-                        .await
-                        .and(Ok(()))
-                    }),
-                )
-            });
-        try_join_all(futs.map(|(name, boxfuture)| {
-            unsafe { jobs.remove(&name).unwrap_unchecked() }.call(boxfuture)
-        }))
-        .await?;
+        try_join_all(self.collect_jobs(name)?.map(|job| job.call())).await?;
         Ok(())
     }
 
     /// Obtain dependency structure
-    pub fn get_deptree(&self, name: &str) -> Result<HashMap<String, HashSet<String>>, AnyError> {
-        let Some(tasks) = self.tasks.get(name) else {
+    pub fn get_deptree<'c>(
+        &'c self,
+        name: &str,
+    ) -> Result<HashMap<String, &'c HashSet<String>>, AnyError> {
+        let Some(task) = self.tasks.get(name) else {
             return Err(anyhow!("Task named {:?} not found.", name));
         };
-        let primary_depends: HashSet<_> = tasks
-            .iter()
-            .flat_map(|(task, _)| task.config.depends.clone())
-            .collect();
+        let primary_depends: &HashSet<_> = task.get_depends();
         let mut depends = primary_depends
             .iter()
             .try_fold(HashMap::new(), |mut parent, n| {
                 let subtree = self.get_deptree(n)?;
-                for tree in subtree.values() {
-                    if tree.contains(name) {
+                for children in subtree.values() {
+                    if children.contains(name) {
                         return Err(anyhow!("Dependencies around {:?} are inappropriate.", name));
                     }
                 }
@@ -122,18 +133,27 @@ impl Composer {
         Ok(depends)
     }
 
-    fn collect_jobs(&self, name: &str) -> Result<HashMap<String, Job>, AnyError> {
-        let tree = self.get_deptree(name)?;
-        let names = tree.keys().cloned();
-        let mut res: HashMap<_, _> = names.clone().map(|name| (name, Job::new())).collect();
-        for name in names {
-            let depends = unsafe { tree.get(&name).unwrap_unchecked() };
-            for dep in depends {
-                let sender = unsafe { res.get(&name).unwrap_unchecked() }.get_sender();
-                unsafe { res.get_mut(dep).unwrap_unchecked() }.dependedby(sender);
+    fn collect_jobs(&self, name: &str) -> Result<impl Iterator<Item = Job>, AnyError> {
+        let mut res = HashMap::new();
+        for (name, depends) in self.get_deptree(name)? {
+            macro_rules! get_or_insert_mut_job {
+                ($name: expr) => {{
+                    // Existence of job named `name` is checked in `self.get_deptree`.
+                    let job = unsafe { self.tasks.get(&$name).unwrap_unchecked() };
+                    res.entry($name).or_insert(job.clone().into())
+                }};
+            }
+
+            let sender = {
+                let master: &mut Job = get_or_insert_mut_job!(name);
+                master.get_sender()
+            };
+
+            for dep in depends.iter().cloned() {
+                get_or_insert_mut_job!(dep).dependedby(sender.clone());
             }
         }
-        Ok(res)
+        Ok(res.into_values())
     }
 
     /// Get all task names.
@@ -181,13 +201,17 @@ impl Composer {
                 .into_inner()
                 .unwrap()
         };
-        let mut tasks: HashMap<String, Vec<(Task, Arc<PathBuf>)>> = Default::default();
+        let mut tasks: HashMap<String, Task> = Default::default();
         for (path, config) in join_all(configfiles).await.into_iter().flatten() {
-            let path = Arc::new(path);
+            let path = Rc::new(path);
             for (name, task) in config.tasks {
                 tasks.entry(name).or_default().push((task, path.clone()));
             }
         }
+        let tasks = tasks
+            .into_iter()
+            .map(|(name, source)| (name, TaskBuf::new(source)))
+            .collect();
         Composer { tasks }
     }
 }

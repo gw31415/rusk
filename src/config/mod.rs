@@ -32,5 +32,5 @@ pub use task_settings::*;
 #[derive(Serialize, Deserialize)]
 pub struct RuskFileContent {
     /// Pairs of Names and Tasks.
-    pub tasks: HashMap<String, Task>,
+    pub tasks: HashMap<String, Atom>,
 }

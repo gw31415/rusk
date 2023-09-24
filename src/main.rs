@@ -1,6 +1,7 @@
-use std::{io, path::PathBuf, os::unix::prelude::OsStrExt};
+use std::{io, os::unix::prelude::OsStrExt, path::PathBuf, process::exit};
 
-use deno_runtime::{deno_core::error::AnyError, tokio_util};
+use deno_runtime::tokio_util;
+use log::{debug, error};
 use rusk::compose::Composer;
 
 const ROOT_PATTERNS: &[&[u8]] = &[
@@ -40,18 +41,22 @@ fn get_root() -> io::Result<PathBuf> {
     Ok(path)
 }
 
-fn main() -> Result<(), AnyError> {
-    tokio_util::create_basic_runtime().block_on(async {
-        println!("================= Deps tree =================");
+fn main() {
+    env_logger::init();
+
+    if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
+        debug!("================= Deps tree =================");
         let composer = Composer::new(get_root()?).await;
-        for (a, deps) in composer.get_deptree("help").unwrap() {
-            println!("- {a}");
+        for (a, deps) in composer.get_deptree("help".to_string())? {
+            debug!("- {a}");
             for d in deps {
-                println!("  └ {d} ");
+                debug!("  └ {d} ");
             }
         }
-        println!("================== Started ==================");
-        composer.execute("help").await
-    })?;
-    Ok(())
+        debug!("================== Started ==================");
+        composer.execute("help".to_string()).await
+    }) {
+        error!("{err}");
+        exit(1);
+    }
 }

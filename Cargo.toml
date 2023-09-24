@@ -6,7 +6,9 @@ version = "0.1.0"
 [dependencies]
 deno_ast = { version = "0.28.0", features = ["transpiling"] }
 deno_runtime = "0.125.0"
+env_logger = "0.10.0"
 ignore = "0.4.20"
+log = "0.4.20"
 serde_with = "3.3.0"
 thiserror = "1.0.48"
 toml = "0.8.0"

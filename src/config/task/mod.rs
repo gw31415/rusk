@@ -12,7 +12,7 @@ use deno_runtime::{
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::fs::canonicalize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// A Task that is the smallest unit of the sequential relationship, and is assigned a name in the RUSKFILE.
@@ -31,14 +31,13 @@ pub struct Atom {
 }
 
 impl Atom {
-    pub async fn execute(&self, path: &Path) -> Result<(), AnyError> {
+    pub async fn execute(&self, url: Url) -> Result<(), AnyError> {
         let Atom { script, config } = self;
         let Script { code, r#type } = script;
         match r#type {
             ScriptType::Deno => {
                 let TaskSettings { deno, .. } = config;
                 let DenoSettings { permissions } = deno;
-                let url = Url::from_file_path(canonicalize(path)?).unwrap();
                 let mut worker = MainWorker::bootstrap_from_options(
                     Url::from_directory_path(canonicalize(std::env::current_dir()?)?).unwrap(),
                     PermissionsContainer::new(Permissions::from_options(permissions)?),

@@ -44,3 +44,9 @@ impl From<String> for TaskName {
         Self(Rc::new(value))
     }
 }
+
+impl AsRef<String> for TaskName {
+    fn as_ref(&self) -> &String {
+        &self.0
+    }
+}

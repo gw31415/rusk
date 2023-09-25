@@ -7,6 +7,7 @@ use deno_runtime::deno_core::{
         future::try_join_all,
         StreamExt,
     },
+    url::Url,
 };
 use log::info;
 
@@ -73,16 +74,11 @@ impl Job {
         drop(self.my_sender);
         let _ = self.receiver.collect::<Vec<_>>().await;
         info!("{:?} started.", self.taskbuf.name);
-        async move {
-            try_join_all(
-                self.taskbuf
-                    .task
-                    .iter()
-                    .map(|(atom, path)| atom.execute(path)),
-            )
-            .await
-            .and(Ok(()))
-        }
+        try_join_all(self.taskbuf.task.iter().map(|(atom, path)| {
+            let mut url = Url::from_file_path(path.as_ref()).unwrap();
+            url.set_fragment(Some(self.taskbuf.name.as_ref()));
+            atom.execute(url)
+        }))
         .await?;
         info!("{:?} finished.", self.taskbuf.name);
         Ok(())

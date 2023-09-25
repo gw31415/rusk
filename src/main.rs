@@ -8,7 +8,7 @@ use std::{
 use clap::Parser;
 use deno::re_exports::deno_runtime::tokio_util;
 use env_logger::Env;
-use log::error;
+use log::{error, info};
 use rusk::compose::Composer;
 
 const ROOT_PATTERNS: &[&[u8]] = &[
@@ -56,9 +56,12 @@ fn get_root() -> io::Result<PathBuf> {
             )
         });
         if contains_ruskfile {
-            return Ok(PathBuf::from(p));
+            let path = PathBuf::from(p);
+            info!("Initialize in {:?}", path);
+            return Ok(path);
         }
     }
+    info!("Project root not found. Initialize in current directory.");
     Ok(path)
 }
 

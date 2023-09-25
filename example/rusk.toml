@@ -19,11 +19,13 @@ depends = ["setupA", "setupB"]
 script = '''
 #!@deno
 import { external } from "./external.ts";
-console.log(`Files around ${import.meta.url}:`)
+import helloWorld from "npm:hello-world-npm";
+console.log(`Files around ${import.meta.url}:`);
 for (const entry of Deno.readDirSync(new URL(".", import.meta.url))) {
   console.log(` - ${entry.name}`);
 }
 external("module loaded.");
+console.log(helloWorld.helloWorld());
 console.log("Done!");
 '''
 deno = { allow_read = ["."] }

@@ -8,6 +8,7 @@ use deno_runtime::deno_core::{
         StreamExt,
     },
 };
+use log::info;
 
 use crate::config::{Task, TaskName};
 
@@ -24,6 +25,7 @@ pub struct Job {
 pub struct TaskBuf {
     task: Rc<Task>,
     depends: OnceCell<HashSet<TaskName>>,
+    name: TaskName,
 }
 
 impl TaskBuf {
@@ -36,10 +38,11 @@ impl TaskBuf {
                 .collect()
         })
     }
-    pub fn new(task: Task) -> Self {
+    pub fn new(task: Task, name: impl Into<TaskName>) -> Self {
         Self {
             task: Rc::new(task),
             depends: OnceCell::new(),
+            name: name.into(),
         }
     }
 }
@@ -69,6 +72,7 @@ impl Job {
     pub async fn call(self) -> Result<(), AnyError> {
         drop(self.my_sender);
         let _ = self.receiver.collect::<Vec<_>>().await;
+        info!("{:?} started.", self.taskbuf.name);
         async move {
             try_join_all(
                 self.taskbuf
@@ -80,6 +84,7 @@ impl Job {
             .and(Ok(()))
         }
         .await?;
+        info!("{:?} finished.", self.taskbuf.name);
         Ok(())
     }
 }

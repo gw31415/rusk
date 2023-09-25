@@ -131,7 +131,7 @@ impl Composer {
         }
         let tasks = tasks
             .into_iter()
-            .map(|(name, task)| (name, TaskBuf::new(task)))
+            .map(|(name, task)| (name.clone(), TaskBuf::new(task, name)))
             .collect();
         Composer { tasks }
     }

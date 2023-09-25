@@ -1,9 +1,12 @@
-use std::{fmt::Display, rc::Rc};
+use std::{
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
 use serde::{Deserialize, Serialize};
 
 /// Name of the Task
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TaskName(Rc<String>);
 
 impl<'de> Deserialize<'de> for TaskName {
@@ -27,6 +30,12 @@ impl Serialize for TaskName {
 impl Display for TaskName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl Debug for TaskName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
     }
 }
 

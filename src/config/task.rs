@@ -10,7 +10,6 @@ use deno::re_exports::deno_runtime::permissions::{Permissions, PermissionsContai
 use deno_media_type::MediaType;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-// use std::fs::canonicalize;
 use std::path::PathBuf;
 use std::rc::Rc;
 

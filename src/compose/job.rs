@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, collections::HashSet, rc::Rc};
 
-use deno_runtime::deno_core::{
+use deno::re_exports::deno_runtime::deno_core::{
     error::AnyError,
     futures::{
         channel::mpsc::{self, UnboundedReceiver, UnboundedSender},

@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use deno_runtime::deno_core::{
+use deno::re_exports::deno_runtime::deno_core::{
     anyhow::anyhow,
     error::AnyError,
     futures::future::{join_all, try_join_all},

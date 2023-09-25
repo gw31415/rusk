@@ -1,6 +1,6 @@
 use std::{io, os::unix::prelude::OsStrExt, path::PathBuf, process::exit};
 
-use deno_runtime::tokio_util;
+use deno::re_exports::deno_runtime::tokio_util;
 use log::{debug, error};
 use rusk::compose::Composer;
 

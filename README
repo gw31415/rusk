@@ -1,0 +1,12 @@
+Parallel processing, modern and fast Task Runner, written in Rust
+
+Usage: rusk [OPTIONS] [TASKNAME]...
+
+Arguments:
+  [TASKNAME]...  Names of tasks to be executed
+
+Options:
+  -l, --list     List task names
+  -v, --verbose  Log output in detail
+  -h, --help     Print help
+  -V, --version  Print version

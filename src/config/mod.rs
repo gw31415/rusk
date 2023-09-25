@@ -1,20 +1,25 @@
+//! This module is responsible for parsing the contents of RUSKFILE.
+//!
 //! # Examples
 //! ```
 //! use std::collections::HashMap;
-//! use rusk::config::{Config, Script, ScriptType, Task};
+//! use rusk::config::{Atom, RuskFileContent, Script, ScriptType};
 //!
-//! let config_file = Config {
-//!     tasks: HashMap::from([(
-//!         "sample".to_string(),
-//!         Task {
-//!             config: Default::default(),
-//!             script: Script {
-//!                 code: "console.log(\"Hello, world!\");\n".to_string(),
-//!                 r#type: ScriptType::Deno,
-//!             },
-//!         },
-//!     )]),
-//! };
+//! let config_file: RuskFileContent = toml::from_str(r#"
+//! [tasks.hello]
+//! deno = {allow_read = ["."]}
+//! script = '''
+//! #!@deno
+//! console.log("Bye, world!");
+//! '''
+//!
+//! [tasks.bye]
+//! depends = ["hello"]
+//! script = '''
+//! #!@deno
+//! console.log("Bye, world!");
+//! '''
+//! "#).unwrap();
 //! print!("{}", toml::to_string(&config_file).unwrap());
 //! ```
 
@@ -30,7 +35,7 @@ pub use task::*;
 pub use task_name::*;
 pub use task_settings::*;
 
-/// Rusk config file.
+/// Settings written in one RUSKFILE
 #[derive(Serialize, Deserialize)]
 pub struct RuskFileContent {
     /// Pairs of Names and Tasks.

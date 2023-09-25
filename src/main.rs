@@ -1,7 +1,7 @@
 use std::{io, os::unix::prelude::OsStrExt, path::PathBuf, process::exit};
 
 use clap::Parser;
-use deno::re_exports::{deno_core::futures::future::try_join_all, deno_runtime::tokio_util};
+use deno::re_exports::deno_runtime::tokio_util;
 use log::error;
 use rusk::compose::Composer;
 
@@ -54,9 +54,7 @@ fn main() {
 
     if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
         let composer = Composer::new(get_root()?).await;
-        try_join_all(taskname.into_iter().map(|task| composer.execute(task)))
-            .await
-            .and(Ok(()))
+        composer.execute(taskname).await
     }) {
         error!("{err}");
         exit(1);

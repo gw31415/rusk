@@ -30,8 +30,11 @@ mod job;
 
 impl Composer {
     /// Perform a Task
-    pub async fn execute(&self, name: impl Into<TaskName>) -> Result<(), AnyError> {
-        try_join_all(self.collect_jobs(name.into())?.map(|job| job.call())).await?;
+    pub async fn execute(
+        &self,
+        names: impl IntoIterator<Item = impl Into<TaskName>>,
+    ) -> Result<(), AnyError> {
+        try_join_all(self.collect_jobs(names)?.map(|job| job.call())).await?;
         Ok(())
     }
 
@@ -39,26 +42,30 @@ impl Composer {
     // TODO: Circulation detection and error
     pub fn get_deptree(
         &self,
-        name: impl Into<TaskName>,
+        names: impl IntoIterator<Item = impl Into<TaskName>>,
     ) -> Result<HashMap<TaskName, &HashSet<TaskName>>, AnyError> {
-        let name = name.into();
-        let Some(task) = self.tasks.get(&name) else {
-            return Err(anyhow!("Task named {:?} not found.", name));
-        };
-        let primary_depends: &HashSet<_> = task.get_depends();
-        let mut depends = primary_depends
-            .iter()
-            .try_fold(HashMap::new(), |mut parent, n| {
-                parent.extend(self.get_deptree(n.clone())?);
-                Ok::<_, AnyError>(parent)
-            })?;
-        depends.insert(name, primary_depends);
+        let mut depends = HashMap::new();
+        for name in names {
+            let name = name.into();
+            if depends.contains_key(&name) {
+                continue;
+            }
+            let Some(task) = self.tasks.get(&name) else {
+                return Err(anyhow!("Task named {:?} not found.", name));
+            };
+            let primary_depends = task.get_depends();
+            depends.extend(self.get_deptree(primary_depends.clone())?);
+            depends.insert(name, primary_depends);
+        }
         Ok(depends)
     }
 
-    fn collect_jobs(&self, name: TaskName) -> Result<impl Iterator<Item = Job>, AnyError> {
+    fn collect_jobs(
+        &self,
+        names: impl IntoIterator<Item = impl Into<TaskName>>,
+    ) -> Result<impl Iterator<Item = Job>, AnyError> {
         let mut res = HashMap::new();
-        for (name, depends) in self.get_deptree(name)? {
+        for (name, depends) in self.get_deptree(names)? {
             macro_rules! get_or_insert_mut_job {
                 ($name: expr) => {{
                     // Existence of job named `name` is checked in `self.get_deptree`.

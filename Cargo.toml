@@ -12,6 +12,7 @@ thiserror = "1.0.48"
 toml = "0.8.0"
 deno = { git = "https://github.com/gw31415/deno", branch="main" }
 deno_media_type = "0.1.1"
+clap = { version = "4.3.3", features = ["derive"] }
 
 [dependencies.serde]
 version = "1.0.188"

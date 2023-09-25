@@ -1,7 +1,8 @@
 use std::{io, os::unix::prelude::OsStrExt, path::PathBuf, process::exit};
 
-use deno::re_exports::deno_runtime::tokio_util;
-use log::{debug, error};
+use clap::Parser;
+use deno::re_exports::{deno_core::futures::future::try_join_all, deno_runtime::tokio_util};
+use log::error;
 use rusk::compose::Composer;
 
 const ROOT_PATTERNS: &[&[u8]] = &[
@@ -18,6 +19,12 @@ const ROOT_PATTERNS: &[&[u8]] = &[
     // "*.csproj",
     // "*.sln",
 ];
+
+#[derive(Parser)]
+struct Args {
+    /// Names of tasks to be executed
+    taskname: Vec<String>,
+}
 
 fn get_root() -> io::Result<PathBuf> {
     use std::{env::current_dir, fs::read_dir};
@@ -43,18 +50,13 @@ fn get_root() -> io::Result<PathBuf> {
 
 fn main() {
     env_logger::init();
+    let Args { taskname } = Args::parse();
 
     if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
-        debug!("================= Deps tree =================");
         let composer = Composer::new(get_root()?).await;
-        for (a, deps) in composer.get_deptree("help".to_string())? {
-            debug!("- {a}");
-            for d in deps {
-                debug!("  └ {d} ");
-            }
-        }
-        debug!("================== Started ==================");
-        composer.execute("help".to_string()).await
+        try_join_all(taskname.into_iter().map(|task| composer.execute(task)))
+            .await
+            .and(Ok(()))
     }) {
         error!("{err}");
         exit(1);

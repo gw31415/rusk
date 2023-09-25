@@ -29,13 +29,13 @@ impl Serialize for TaskName {
 
 impl Display for TaskName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        Display::fmt(&self.0, f)
     }
 }
 
 impl Debug for TaskName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
+        Debug::fmt(&self.0, f)
     }
 }
 

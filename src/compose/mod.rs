@@ -18,10 +18,12 @@ use crate::config::{RuskFileContent, Task, TaskName};
 
 use self::job::{Job, TaskBuf};
 
+/// A structure that searches multiple RUSKFILEs, resolves dependencies, and executes
 pub struct Composer {
     tasks: HashMap<TaskName, TaskBuf>,
 }
 
+/// RUSKFILE filename
 pub const RUSKFILE: &str = "rusk.toml";
 
 mod job;

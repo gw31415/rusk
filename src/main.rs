@@ -11,6 +11,7 @@ use deno::re_exports::deno_runtime::tokio_util;
 use env_logger::Env;
 use log::{error, info};
 use rusk::compose::Composer;
+use serde_json::json;
 
 const ROOT_PATTERNS: &[&[u8]] = &[
     b".git",
@@ -46,7 +47,10 @@ struct Args {
 
 #[derive(ValueEnum, Clone)]
 enum InfoTarget {
+    /// Print the task list
     Tasks,
+    /// Print information on current projects
+    Project,
 }
 
 fn get_root() -> io::Result<PathBuf> {
@@ -95,18 +99,30 @@ fn main() {
     }
 
     if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
-        let composer = Composer::new(get_root()?).await;
+        let project_root = get_root()?;
+        let composer = Composer::new(&project_root).await;
 
         // Print infomation
         if let Some(info) = info {
+            let mut writer = BufWriter::new(io::stdout());
             match info {
                 InfoTarget::Tasks => {
-                    let mut writer = BufWriter::new(io::stdout());
                     for name in composer.task_names() {
                         writeln!(writer, "{name}")?;
                     }
                 }
+                InfoTarget::Project => {
+                    let data = json!({
+                        "project_root": project_root,
+                        "project": composer,
+                    });
+                    writeln!(writer, "{data}")?;
+                    // writer.write_all(&serde_json::to_vec(&composer)?)?;
+                    // writeln!(writer)?;
+                }
             }
+            writer.flush()?;
+            exit(0);
         }
 
         // Execute tasks

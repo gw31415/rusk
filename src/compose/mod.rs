@@ -13,12 +13,14 @@ use deno::re_exports::deno_runtime::deno_core::{
     futures::future::{join_all, try_join_all},
 };
 use ignore::WalkBuilder;
+use serde::Serialize;
 
 use crate::config::{RuskFileContent, Task, TaskName};
 
 use self::job::{Job, TaskBuf};
 
 /// A structure that searches multiple RUSKFILEs, resolves dependencies, and executes
+#[derive(Serialize)]
 pub struct Composer {
     tasks: HashMap<TaskName, TaskBuf>,
 }

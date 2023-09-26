@@ -10,6 +10,7 @@ use deno::re_exports::deno_runtime::deno_core::{
     url::Url,
 };
 use log::info;
+use serde::Serialize;
 
 use crate::config::{Task, TaskName};
 
@@ -27,6 +28,14 @@ pub struct TaskBuf {
     task: Rc<Task>,
     depends: OnceCell<HashSet<TaskName>>,
     name: TaskName,
+}
+
+impl Serialize for TaskBuf {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer {
+        self.task.serialize(serializer)
+    }
 }
 
 impl TaskBuf {

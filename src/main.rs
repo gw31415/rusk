@@ -49,7 +49,7 @@ struct Args {
 enum InfoTarget {
     /// Print the task list
     Tasks,
-    /// Print information on current projects
+    /// Print information of the current project in JSON
     Project,
 }
 

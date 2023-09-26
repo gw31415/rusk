@@ -5,7 +5,7 @@ use std::{
     process::exit,
 };
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::{generate, Shell};
 use deno::re_exports::deno_runtime::tokio_util;
 use env_logger::Env;
@@ -33,15 +33,20 @@ const ROOT_PATTERNS: &[&[u8]] = &[
 struct Args {
     /// Names of tasks to be executed
     taskname: Vec<String>,
-    /// List task names
-    #[arg(short, long)]
-    list: bool,
+    /// Print information
+    #[arg(long)]
+    info: Option<InfoTarget>,
     /// Log output in detail
     #[arg(short, long)]
     verbose: bool,
     /// Generate shell completion
     #[arg(long, value_name = "SHELL")]
     completion: Option<Shell>,
+}
+
+#[derive(ValueEnum, Clone)]
+enum InfoTarget {
+    Tasks,
 }
 
 fn get_root() -> io::Result<PathBuf> {
@@ -72,7 +77,7 @@ fn get_root() -> io::Result<PathBuf> {
 fn main() {
     let Args {
         taskname,
-        list,
+        info,
         verbose,
         completion: shell,
     } = Args::parse();
@@ -92,11 +97,15 @@ fn main() {
     if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
         let composer = Composer::new(get_root()?).await;
 
-        // List task names
-        if list {
-            let mut writer = BufWriter::new(io::stdout());
-            for name in composer.task_names() {
-                writeln!(writer, "{name}")?;
+        // Print infomation
+        if let Some(info) = info {
+            match info {
+                InfoTarget::Tasks => {
+                    let mut writer = BufWriter::new(io::stdout());
+                    for name in composer.task_names() {
+                        writeln!(writer, "{name}")?;
+                    }
+                }
             }
         }
 
@@ -114,7 +123,7 @@ fn shell_completion(shell: Shell) {
     let mut cmd = Args::command();
     let name = cmd.get_name().to_string();
     if Shell::Fish == shell {
-        writeln!(stdout, "complete -c {name} -xa '({name} -l)'").unwrap();
+        writeln!(stdout, "complete -c {name} -xa '({name} --info tasks)'").unwrap();
     }
     generate(shell, &mut cmd, name, &mut stdout);
 }

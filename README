@@ -6,7 +6,8 @@ Arguments:
   [TASKNAME]...  Names of tasks to be executed
 
 Options:
-  -l, --list     List task names
-  -v, --verbose  Log output in detail
-  -h, --help     Print help
-  -V, --version  Print version
+      --info <INFO>         Print information [possible values: tasks]
+  -v, --verbose             Log output in detail
+      --completion <SHELL>  Generate shell completion [possible values: bash, elvish, fish, powershell, zsh]
+  -h, --help                Print help
+  -V, --version             Print version

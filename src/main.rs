@@ -5,7 +5,8 @@ use std::{
     process::exit,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, Shell};
 use deno::re_exports::deno_runtime::tokio_util;
 use env_logger::Env;
 use log::{error, info};
@@ -38,6 +39,9 @@ struct Args {
     /// Log output in detail
     #[arg(short, long)]
     verbose: bool,
+    /// Generate shell completion
+    #[arg(long, value_name = "SHELL")]
+    completion: Option<Shell>,
 }
 
 fn get_root() -> io::Result<PathBuf> {
@@ -70,6 +74,7 @@ fn main() {
         taskname,
         list,
         verbose,
+        completion: shell,
     } = Args::parse();
 
     // Setup env_logger
@@ -77,6 +82,11 @@ fn main() {
         env_logger::init_from_env(Env::new().default_filter_or("info"));
     } else {
         env_logger::init();
+
+        // Shell completion
+        if let Some(shell) = shell {
+            shell_completion(shell);
+        }
     }
 
     if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
@@ -96,4 +106,15 @@ fn main() {
         error!("{err}");
         exit(1);
     }
+}
+
+#[cold]
+fn shell_completion(shell: Shell) {
+    let mut stdout = BufWriter::new(io::stdout());
+    let mut cmd = Args::command();
+    let name = cmd.get_name().to_string();
+    if Shell::Fish == shell {
+        writeln!(stdout, "complete -c {name} -xa '({name} -l)'").unwrap();
+    }
+    generate(shell, &mut cmd, name, &mut stdout);
 }

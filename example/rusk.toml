@@ -1,11 +1,13 @@
 [tasks.setupA]
+deno = { allow_read = [], allow_run = [], allow_env = [], allow_sys = [] }
 script = '''
 #!@deno
-console.log("A done.");
+import "npm:zx/globals";
+await $`echo "A done."`;
 '''
-deno = { allow_net = [] }
 
 [tasks.setupB]
+# depends = ["setupA"]
 script = '''
 #!@deno
 import { sleep } from "https://deno.land/x/sleep@v1.2.1/mod.ts";
@@ -19,13 +21,12 @@ depends = ["setupA", "setupB"]
 script = '''
 #!@deno
 import { external } from "./external.ts";
-import helloWorld from "npm:hello-world-npm";
+import { sleep } from "https://deno.land/x/sleep@v1.2.1/mod.ts";
 console.log(`Files around ${import.meta.url}:`);
 for (const entry of Deno.readDirSync(new URL(".", import.meta.url))) {
   console.log(` - ${entry.name}`);
 }
 external("module loaded.");
-console.log(helloWorld.helloWorld());
-console.log("Done!");
+await sleep(0.5);
 '''
 deno = { allow_read = ["."] }

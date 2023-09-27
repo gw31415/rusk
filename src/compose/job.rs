@@ -1,16 +1,11 @@
 use std::{cell::OnceCell, collections::HashSet, rc::Rc};
 
 use deno::re_exports::deno_runtime::deno_core::{
-    error::AnyError,
-    futures::{
-        channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
-        future::try_join_all,
-        StreamExt,
-    },
-    url::Url,
+    error::AnyError, futures::future::try_join_all, url::Url,
 };
 use log::info;
 use serde::Serialize;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::config::{Task, TaskName};
 
@@ -32,8 +27,9 @@ pub struct TaskBuf {
 
 impl Serialize for TaskBuf {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         self.task.serialize(serializer)
     }
 }
@@ -59,7 +55,7 @@ impl TaskBuf {
 
 impl From<TaskBuf> for Job {
     fn from(taskbuf: TaskBuf) -> Self {
-        let (my_sender, receiver) = mpsc::unbounded::<()>();
+        let (my_sender, receiver) = mpsc::unbounded_channel();
         Job {
             my_sender,
             next_jobs: Vec::new(),
@@ -79,9 +75,9 @@ impl Job {
         self.next_jobs.push(dependents);
     }
     /// Launch the Task. Wait for dependent Tasks. cf: `get_sender`
-    pub async fn call(self) -> Result<(), AnyError> {
+    pub async fn call(mut self) -> Result<(), AnyError> {
         drop(self.my_sender);
-        let _ = self.receiver.collect::<Vec<_>>().await;
+        while self.receiver.recv().await.is_some() {}
         info!("{:?} started.", self.taskbuf.name);
         try_join_all(self.taskbuf.task.iter().map(|(atom, path)| {
             let mut url = Url::from_file_path(path.as_ref()).unwrap();

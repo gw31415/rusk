@@ -132,24 +132,6 @@ impl Atom {
                     ..Default::default()
                 };
                 run_deno(flags, code.clone().into_bytes(), url).await?;
-                // let mut worker = MainWorker::bootstrap_from_options(
-                //     Url::from_directory_path(canonicalize(std::env::current_dir()?)?).unwrap(),
-                //     PermissionsContainer::new(Permissions::from_options(permissions)?),
-                //     WorkerOptions {
-                //         module_loader: Rc::new(XTaskModuleLoader),
-                //         ..Default::default()
-                //     },
-                // );
-                // let id = worker
-                //     .js_runtime
-                //     .load_main_module(
-                //         &url,
-                //         Some(deno_runtime::deno_core::FastString::Owned(
-                //             code.to_owned().into_boxed_str(),
-                //         )),
-                //     )
-                //     .await?;
-                // worker.evaluate_module(id).await?;
             }
         }
         Ok(())

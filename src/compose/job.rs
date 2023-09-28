@@ -1,21 +1,11 @@
 use std::{cell::OnceCell, collections::HashSet, rc::Rc};
 
-use deno::re_exports::deno_runtime::deno_core::{
-    error::AnyError, futures::future::try_join_all, url::Url,
-};
+use deno::re_exports::deno_core::{anyhow::Result, futures::future::try_join_all, url::Url};
 use log::info;
 use serde::Serialize;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::Sender;
 
 use crate::config::{Task, TaskName};
-
-/// A Job that executes a single Task, with dependencies set before execution.
-pub struct Job {
-    my_sender: UnboundedSender<()>,
-    receiver: UnboundedReceiver<()>,
-    next_jobs: Vec<UnboundedSender<()>>,
-    taskbuf: TaskBuf,
-}
 
 #[derive(Clone)]
 /// A Task to have in a Job, caching the results of depends and preventing deep copying of Tasks with Rc.
@@ -53,39 +43,34 @@ impl TaskBuf {
     }
 }
 
-impl From<TaskBuf> for Job {
-    fn from(taskbuf: TaskBuf) -> Self {
-        let (my_sender, receiver) = mpsc::unbounded_channel();
-        Job {
-            my_sender,
-            next_jobs: Vec::new(),
-            receiver,
-            taskbuf,
-        }
-    }
+/// A Job that executes a single Task, with dependencies set before execution.
+pub struct Job {
+    ending_notifier: Sender<(TaskName, Result<()>)>,
+    taskbuf: TaskBuf,
 }
 
 impl Job {
-    /// Outputs an UnboundedSender for assignment to the method `dependedby` the dependent Job instance.
-    pub fn get_sender(&self) -> UnboundedSender<()> {
-        self.my_sender.clone()
+    pub fn new(taskbuf: TaskBuf, ending_notifier: Sender<(TaskName, Result<()>)>) -> Self {
+        Job {
+            ending_notifier,
+            taskbuf,
+        }
     }
-    /// Specify the UnboundedSender of the Job that depends on this Job.
-    pub fn dependedby(&mut self, dependents: UnboundedSender<()>) {
-        self.next_jobs.push(dependents);
-    }
+
     /// Launch the Task. Wait for dependent Tasks. cf: `get_sender`
-    pub async fn call(mut self) -> Result<(), AnyError> {
-        drop(self.my_sender);
-        while self.receiver.recv().await.is_some() {}
+    pub async fn call(self) {
         info!("{:?} started.", self.taskbuf.name);
-        try_join_all(self.taskbuf.task.iter().map(|(atom, path)| {
+        let res = try_join_all(self.taskbuf.task.iter().map(|(atom, path)| {
             let mut url = Url::from_file_path(path.as_ref()).unwrap();
             url.set_fragment(Some(self.taskbuf.name.as_ref()));
             atom.execute(url)
         }))
-        .await?;
+        .await
+        .and(Ok(()));
         info!("{:?} finished.", self.taskbuf.name);
-        Ok(())
+        self.ending_notifier
+            .send((self.taskbuf.name, res))
+            .await
+            .unwrap();
     }
 }

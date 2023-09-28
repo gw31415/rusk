@@ -8,12 +8,15 @@ use std::{
 };
 
 use deno::re_exports::deno_runtime::deno_core::{
-    anyhow::anyhow,
-    error::AnyError,
-    futures::future::{join_all, try_join_all},
+    anyhow::{anyhow, Result},
+    futures::future::join_all,
 };
 use ignore::WalkBuilder;
 use serde::Serialize;
+use tokio::{
+    sync::mpsc::channel,
+    task::{spawn_local, LocalSet},
+};
 
 use crate::config::{RuskFileContent, Task, TaskName};
 
@@ -35,9 +38,51 @@ impl Composer {
     pub async fn execute(
         &self,
         names: impl IntoIterator<Item = impl Into<TaskName>>,
-    ) -> Result<(), AnyError> {
-        try_join_all(self.collect_jobs(names)?.map(|job| job.call())).await?;
-        Ok(())
+    ) -> Result<()> {
+        let mut deptree: HashMap<_, _> = self
+            .get_deptree(names)?
+            .into_iter()
+            .map(|(k, v)| (k, v.clone()))
+            .collect();
+        let (sender, mut receiver) = channel(deptree.len());
+        let mut jobs: HashMap<_, _> = deptree
+            .keys()
+            .map(|name| {
+                (
+                    name.clone(),
+                    Job::new(
+                        unsafe { self.tasks.get(name).unwrap_unchecked() }.to_owned(),
+                        sender.clone(),
+                    ),
+                )
+            })
+            .collect();
+        drop(sender);
+        let local = LocalSet::new();
+        local
+            .run_until(async move {
+                // First time launching Jobs
+                for (name, _) in deptree.iter().filter(|(_, deps)| deps.is_empty()) {
+                    let job = unsafe { jobs.remove(name).unwrap_unchecked() };
+                    spawn_local(job.call());
+                }
+                while let Some((name, res)) = receiver.recv().await {
+                    res?;
+                    deptree.remove(&name);
+                    for (_, deps) in deptree.iter_mut() {
+                        deps.remove(&name);
+                    }
+
+                    // Launching a Job with Resolved Dependencies
+                    for (name, _) in deptree.iter().filter(|(_, v)| v.is_empty()) {
+                        if let Some(job) = jobs.remove(name) {
+                            spawn_local(job.call());
+                        }
+                    }
+                }
+                Ok(())
+            })
+            .await
     }
 
     /// Obtain dependency structure
@@ -45,7 +90,7 @@ impl Composer {
     pub fn get_deptree(
         &self,
         names: impl IntoIterator<Item = impl Into<TaskName>>,
-    ) -> Result<HashMap<TaskName, &HashSet<TaskName>>, AnyError> {
+    ) -> Result<HashMap<TaskName, &HashSet<TaskName>>> {
         let mut depends = HashMap::new();
         for name in names {
             let name = name.into();
@@ -60,32 +105,6 @@ impl Composer {
             depends.insert(name, primary_depends);
         }
         Ok(depends)
-    }
-
-    fn collect_jobs(
-        &self,
-        names: impl IntoIterator<Item = impl Into<TaskName>>,
-    ) -> Result<impl Iterator<Item = Job>, AnyError> {
-        let mut res = HashMap::new();
-        for (name, depends) in self.get_deptree(names)? {
-            macro_rules! get_or_insert_mut_job {
-                ($name: expr) => {{
-                    // Existence of job named `name` is checked in `self.get_deptree`.
-                    let job = unsafe { self.tasks.get(&$name).unwrap_unchecked() };
-                    res.entry($name).or_insert(job.clone().into())
-                }};
-            }
-
-            let sender = {
-                let master: &mut Job = get_or_insert_mut_job!(name);
-                master.get_sender()
-            };
-
-            for dep in depends.iter().cloned() {
-                get_or_insert_mut_job!(dep).dependedby(sender.clone());
-            }
-        }
-        Ok(res.into_values())
     }
 
     /// Get all task names.
@@ -109,7 +128,7 @@ impl Composer {
                                         let path = entry.path().to_path_buf();
                                         // make Future of Config
                                         async {
-                                            (|| -> Result<_, AnyError> {
+                                            (|| -> Result<_> {
                                                 // Read file & deserialize into Config
                                                 let content_str =
                                                     io::read_to_string(File::open(&path)?)?;

@@ -7,13 +7,12 @@ await $`echo "A done."`;
 '''
 
 [tasks.setupB]
-# depends = ["setupA"]
+deno = { allow_read = [], allow_run = [], allow_env = [], allow_sys = [] }
 script = '''
 #!@deno
-import { sleep } from "https://deno.land/x/sleep@v1.2.1/mod.ts";
-console.log("B Extracting...");
-await sleep(0.5);
-console.log("B done.");
+import "npm:zx/globals";
+await $`echo "B done."`;
+await $`echo "B done."`;
 '''
 
 [tasks.help]

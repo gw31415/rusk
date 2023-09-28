@@ -4,8 +4,7 @@ use super::{script::Script, ScriptType};
 use deno::args::Flags;
 use deno::factory::CliFactory;
 use deno::file_fetcher::File;
-use deno::re_exports::deno_core::url::Url;
-use deno::re_exports::deno_runtime::deno_core::error::AnyError;
+use deno::re_exports::deno_core::{anyhow::Result, url::Url};
 use deno::re_exports::deno_runtime::permissions::{Permissions, PermissionsContainer};
 use deno_media_type::MediaType;
 use serde::{Deserialize, Serialize};
@@ -29,7 +28,7 @@ pub struct Atom {
 }
 
 impl Atom {
-    pub async fn execute(&self, url: Url) -> Result<(), AnyError> {
+    pub async fn execute(&self, url: Url) -> Result<()> {
         let Atom { script, config } = self;
         let Script { code, r#type } = script;
         match r#type {
@@ -138,7 +137,7 @@ impl Atom {
     }
 }
 
-async fn run_deno(flags: Flags, source: Vec<u8>, url: Url) -> Result<i32, AnyError> {
+async fn run_deno(flags: Flags, source: Vec<u8>, url: Url) -> Result<i32> {
     let factory = CliFactory::from_flags(flags).await?;
     let cli_options = factory.cli_options();
 
@@ -161,14 +160,12 @@ async fn run_deno(flags: Flags, source: Vec<u8>, url: Url) -> Result<i32, AnyErr
     // to allow module access by TS compiler
     file_fetcher.insert_cached(source_file);
 
-    let mut worker = worker_factory
-        .create_main_worker(url, permissions)
-        .await?;
+    let mut worker = worker_factory.create_main_worker(url, permissions).await?;
     let exit_code = worker.run().await?;
     Ok(exit_code)
 }
 
-async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
+async fn maybe_npm_install(factory: &CliFactory) -> Result<()> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if factory.cli_options().node_modules_dir_enablement() == Some(true) {

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
@@ -12,12 +12,12 @@ pub enum RuskError {
     ConfigParseError(#[from] ConfigParseError),
 }
 
-pub struct Config<'a> {
-    pub tasks: HashMap<String, Task<'a>>,
+pub struct Config {
+    pub tasks: HashMap<String, Task>,
     pub envs: HashMap<String, String>,
 }
 
-impl Config<'_> {
+impl Config {
     pub async fn execute(
         self,
         stdin: ShellPipeReader,
@@ -34,9 +34,9 @@ impl Config<'_> {
     }
 }
 
-pub struct Task<'a> {
+pub struct Task {
     pub envs: HashMap<String, String>,
-    pub script: Cow<'a, str>,
+    pub script: String,
     pub cwd: PathBuf,
     pub depends: Vec<String>,
 }
@@ -54,7 +54,7 @@ pub enum ConfigParseError {
     },
 }
 
-impl TryFrom<Config<'_>> for ParsedConfig {
+impl TryFrom<Config> for ParsedConfig {
     type Error = ConfigParseError;
 
     fn try_from(config: Config) -> Result<Self, Self::Error> {
@@ -188,7 +188,7 @@ async fn main() {
         envs: envs.clone(),
         tasks: [
             (
-                "task1".to_string(),
+                "task1".into(),
                 Task {
                     envs: HashMap::new(),
                     script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'".into(),
@@ -197,7 +197,7 @@ async fn main() {
                 },
             ),
             (
-                "task2".to_string(),
+                "task2".into(),
                 Task {
                     envs: HashMap::new(),
                     script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".into(),

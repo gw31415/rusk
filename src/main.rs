@@ -25,10 +25,10 @@ impl Config {
         stderr: ShellPipeWriter,
     ) -> Result<(), RuskError> {
         let parsed = ParsedConfig::try_from(self)?;
-        let fs = parsed.tasks.into_iter().map(|task| {
-            let (stdin, stdout, stderr) = (stdin.clone(), stdout.clone(), stderr.clone());
-            task.execute(stdin, stdout, stderr)
-        });
+        let fs = parsed
+            .tasks
+            .into_iter()
+            .map(|task| task.execute(stdin.clone(), stdout.clone(), stderr.clone()));
         try_join_all(fs).await?;
         Ok(())
     }

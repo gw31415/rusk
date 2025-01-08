@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
@@ -12,11 +12,11 @@ pub enum RuskError {
     ConfigParseError(#[from] ConfigParseError),
 }
 
-pub struct Config {
-    pub tasks: HashMap<String, Task>,
+pub struct Config<'a> {
+    pub tasks: HashMap<String, Task<'a>>,
 }
 
-impl Config {
+impl Config<'_> {
     pub async fn execute(
         self,
         stdin: ShellPipeReader,
@@ -33,9 +33,9 @@ impl Config {
     }
 }
 
-pub struct Task {
+pub struct Task<'a> {
     pub envs: HashMap<String, String>,
-    pub script: String,
+    pub script: Cow<'a, str>,
     pub cwd: PathBuf,
     pub depends: Vec<String>,
 }
@@ -53,7 +53,7 @@ pub enum ConfigParseError {
     },
 }
 
-impl TryFrom<Config> for ParsedConfig {
+impl TryFrom<Config<'_>> for ParsedConfig {
     type Error = ConfigParseError;
 
     fn try_from(config: Config) -> Result<Self, Self::Error> {
@@ -68,12 +68,10 @@ impl TryFrom<Config> for ParsedConfig {
                 return Err(ConfigParseError::DuplicateTaskName { task_name });
             }
 
-            let script = deno_task_shell::parser::parse(&task.script).map_err(|error| {
-                ConfigParseError::ScriptParseError {
-                    task_name: task_name.clone(),
-                    error,
-                }
-            })?;
+            let script = match deno_task_shell::parser::parse(&task.script) {
+                Ok(script) => script,
+                Err(error) => return Err(ConfigParseError::ScriptParseError { task_name, error }),
+            };
 
             let mut depends = Vec::new();
             for dep_name in &task.depends {
@@ -188,8 +186,7 @@ async fn main() {
                 "task1".to_string(),
                 Task {
                     envs: envs.clone(),
-                    script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'"
-                        .to_string(),
+                    script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'".into(),
                     cwd: cwd.clone(),
                     depends: vec![],
                 },
@@ -198,7 +195,7 @@ async fn main() {
                 "task2".to_string(),
                 Task {
                     envs: envs.clone(),
-                    script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".to_string(),
+                    script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".into(),
                     cwd: cwd.clone(),
                     depends: vec![], // vec!["task1".to_string()],
                 },

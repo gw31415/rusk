@@ -14,6 +14,7 @@ pub enum RuskError {
 
 pub struct Config<'a> {
     pub tasks: HashMap<String, Task<'a>>,
+    pub envs: HashMap<String, String>,
 }
 
 impl Config<'_> {
@@ -57,7 +58,10 @@ impl TryFrom<Config<'_>> for ParsedConfig {
     type Error = ConfigParseError;
 
     fn try_from(config: Config) -> Result<Self, Self::Error> {
-        let Config { tasks } = config;
+        let Config {
+            tasks,
+            envs: global_config,
+        } = config;
         let mut tasks = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by(|(_, t1), (_, t2)| t1.depends.len().cmp(&t2.depends.len()));
 
@@ -91,7 +95,7 @@ impl TryFrom<Config<'_>> for ParsedConfig {
                 ParsedTask {
                     task_name,
                     script,
-                    envs,
+                    envs: global_config.clone().into_iter().chain(envs).collect(),
                     cwd,
                     depends,
                     nexts: Vec::new(),
@@ -181,11 +185,12 @@ async fn main() {
     let envs: HashMap<_, _> = std::env::vars().collect();
     let cwd = std::env::current_dir().unwrap();
     let config = Config {
+        envs: envs.clone(),
         tasks: [
             (
                 "task1".to_string(),
                 Task {
-                    envs: envs.clone(),
+                    envs: HashMap::new(),
                     script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'".into(),
                     cwd: cwd.clone(),
                     depends: vec![],
@@ -194,7 +199,7 @@ async fn main() {
             (
                 "task2".to_string(),
                 Task {
-                    envs: envs.clone(),
+                    envs: HashMap::new(),
                     script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".into(),
                     cwd: cwd.clone(),
                     depends: vec![], // vec!["task1".to_string()],

@@ -1,145 +1,229 @@
-use std::{
-    io::{self, BufWriter, Write},
-    os::unix::prelude::OsStrExt,
-    path::PathBuf,
-    process::exit,
-};
+use std::{collections::HashMap, path::PathBuf};
 
-use clap::{CommandFactory, Parser, ValueEnum};
-use clap_complete::{generate, Shell};
-use deno::re_exports::deno_runtime::tokio_util;
-use env_logger::Env;
-use log::{error, info};
-use rusk::compose::Composer;
-use serde_json::json;
+use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
+use futures::future::try_join_all;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-const ROOT_PATTERNS: &[&[u8]] = &[
-    b".git",
-    b".svn",
-    b".hg",
-    b".bzr",
-    // ".gitignore",
-    b"Rakefile",
-    b"pom.xml",
-    b"project.clj",
-    b"package.json",
-    b"manifest.json",
-    // "*.csproj",
-    // "*.sln",
-];
-
-#[derive(Parser)]
-/// Parallel processing, modern and fast Task Runner, written in Rust.
-#[command(author, version)]
-struct Args {
-    /// Names of tasks to be executed
-    taskname: Vec<String>,
-    /// Print information
-    #[arg(long)]
-    info: Option<InfoTarget>,
-    /// Log output in detail
-    #[arg(short, long)]
-    verbose: bool,
-    /// Generate shell completion
-    #[arg(long, value_name = "SHELL")]
-    completion: Option<Shell>,
+#[derive(Debug, thiserror::Error)]
+pub enum RuskError {
+    #[error(transparent)]
+    TaskError(#[from] TaskError),
+    #[error(transparent)]
+    ConfigParseError(#[from] ConfigParseError),
 }
 
-#[derive(ValueEnum, Clone)]
-enum InfoTarget {
-    /// Print the task list
-    Tasks,
-    /// Print information of the current project in JSON
-    Project,
+pub struct Config {
+    pub tasks: HashMap<String, Task>,
 }
 
-fn get_root() -> io::Result<PathBuf> {
-    use std::{env::current_dir, fs::read_dir};
-    let path = current_dir()?;
-    let path_ancestors = path.as_path().ancestors();
-    for p in path_ancestors {
-        let contains_ruskfile = read_dir(p)?.any(|p| {
-            ROOT_PATTERNS.contains(
-                &{
-                    let Ok(entry) = p else { return false; };
-                    entry
-                }
-                .file_name()
-                .as_bytes(),
-            )
+impl Config {
+    pub async fn execute(
+        self,
+        stdin: ShellPipeReader,
+        stdout: ShellPipeWriter,
+        stderr: ShellPipeWriter,
+    ) -> Result<(), RuskError> {
+        let parsed = ParsedConfig::try_from(self)?;
+        let fs = parsed.tasks.into_iter().map(|task| {
+            let (stdin, stdout, stderr) = (stdin.clone(), stdout.clone(), stderr.clone());
+            task.execute(stdin, stdout, stderr)
         });
-        if contains_ruskfile {
-            let path = PathBuf::from(p);
-            info!("Initialize in {:?}", path);
-            return Ok(path);
-        }
+        try_join_all(fs).await?;
+        Ok(())
     }
-    info!("Project root not found. Initialize in current directory.");
-    Ok(path)
 }
 
-fn main() {
-    let Args {
-        taskname,
-        info,
-        verbose,
-        completion: shell,
-    } = Args::parse();
+pub struct Task {
+    pub envs: HashMap<String, String>,
+    pub script: String,
+    pub cwd: PathBuf,
+    pub depends: Vec<String>,
+}
 
-    // Setup env_logger
-    if verbose {
-        env_logger::init_from_env(Env::new().default_filter_or("info"));
-    } else {
-        env_logger::init();
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigParseError {
+    #[error("Task {task_name} is not executable because of dependency-related issues")]
+    UnexecutableTask { task_name: String },
+    #[error("Task {task_name} is defined multiple times")]
+    DuplicateTaskName { task_name: String },
+    #[error("Task {task_name} script parse error: {error}")]
+    ScriptParseError {
+        task_name: String,
+        error: anyhow::Error,
+    },
+}
 
-        // Shell completion
-        if let Some(shell) = shell {
-            shell_completion(shell);
-        }
-    }
+impl TryFrom<Config> for ParsedConfig {
+    type Error = ConfigParseError;
 
-    if let Err(err) = tokio_util::create_basic_runtime().block_on(async {
-        let project_root = get_root()?;
-        let composer = Composer::new(&project_root).await;
+    fn try_from(config: Config) -> Result<Self, Self::Error> {
+        let Config { tasks } = config;
+        let mut tasks = tasks.into_iter().collect::<Vec<_>>();
+        tasks.sort_by(|(_, t1), (_, t2)| t1.depends.len().cmp(&t2.depends.len()));
 
-        // Print infomation
-        if let Some(info) = info {
-            let mut writer = BufWriter::new(io::stdout());
-            match info {
-                InfoTarget::Tasks => {
-                    for name in composer.task_names() {
-                        writeln!(writer, "{name}")?;
-                    }
+        let mut parsed_tasks: HashMap<String, ParsedTask> = HashMap::new();
+
+        for (task_name, task) in tasks {
+            if parsed_tasks.contains_key(&task_name) {
+                return Err(ConfigParseError::DuplicateTaskName { task_name });
+            }
+
+            let script = deno_task_shell::parser::parse(&task.script).map_err(|error| {
+                ConfigParseError::ScriptParseError {
+                    task_name: task_name.clone(),
+                    error,
                 }
-                InfoTarget::Project => {
-                    let data = json!({
-                        "project_root": project_root,
-                        "project": composer,
-                    });
-                    writeln!(writer, "{data}")?;
-                    // writer.write_all(&serde_json::to_vec(&composer)?)?;
-                    // writeln!(writer)?;
+            })?;
+
+            let mut depends = Vec::new();
+            for dep_name in &task.depends {
+                let (tx, rx) = channel::<Result<(), ()>>(1);
+                depends.push(rx);
+                if let Some(dep_task) = parsed_tasks.get_mut(dep_name) {
+                    dep_task.nexts.push(tx);
+                } else {
+                    return Err(ConfigParseError::UnexecutableTask { task_name });
                 }
             }
-            writer.flush()?;
-            exit(0);
+
+            let Task { envs, cwd, .. } = task;
+
+            parsed_tasks.insert(
+                task_name.clone(),
+                ParsedTask {
+                    task_name,
+                    script,
+                    envs,
+                    cwd,
+                    depends,
+                    nexts: Vec::new(),
+                },
+            );
         }
 
-        // Execute tasks
-        composer.execute(taskname).await
-    }) {
-        error!("{err}");
-        exit(1);
+        Ok(ParsedConfig {
+            tasks: parsed_tasks.into_values().collect(),
+        })
     }
 }
 
-#[cold]
-fn shell_completion(shell: Shell) {
-    let mut stdout = BufWriter::new(io::stdout());
-    let mut cmd = Args::command();
-    let name = cmd.get_name().to_string();
-    if Shell::Fish == shell {
-        writeln!(stdout, "complete -c {name} -xa '({name} --info tasks)'").unwrap();
+pub type TaskResult = Result<(), TaskError>;
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("Task {task_name} failed with exit code {exit_code}")]
+pub struct TaskError {
+    pub task_name: String,
+    pub exit_code: i32,
+}
+
+struct ParsedConfig {
+    tasks: Vec<ParsedTask>,
+}
+
+struct ParsedTask {
+    task_name: String,
+    envs: HashMap<String, String>,
+    script: SequentialList,
+    cwd: PathBuf,
+
+    depends: Vec<Receiver<Result<(), ()>>>,
+    nexts: Vec<Sender<Result<(), ()>>>,
+}
+
+impl ParsedTask {
+    async fn execute(
+        self,
+        stdin: ShellPipeReader,
+        stdout: ShellPipeWriter,
+        stderr: ShellPipeWriter,
+    ) -> TaskResult {
+        let ParsedTask {
+            task_name,
+            envs,
+            script,
+            cwd,
+            depends,
+            nexts,
+        } = self;
+        if try_join_all(
+            depends
+                .into_iter()
+                .map(|mut rx| async move { rx.recv().await.unwrap() }),
+        )
+        .await
+        .is_err()
+        {
+            return Ok(());
+        }
+
+        let exit_code = deno_task_shell::execute_with_pipes(
+            script,
+            ShellState::new(envs, &cwd, Default::default(), Default::default()),
+            stdin,
+            stdout,
+            stderr,
+        )
+        .await;
+        if exit_code == 0 {
+            for tx in nexts {
+                tx.send(Ok(())).await.unwrap();
+            }
+            Ok(())
+        } else {
+            Err(TaskError {
+                task_name,
+                exit_code,
+            })
+        }
     }
-    generate(shell, &mut cmd, name, &mut stdout);
+}
+
+#[tokio::main]
+async fn main() {
+    let envs: HashMap<_, _> = std::env::vars().collect();
+    let cwd = std::env::current_dir().unwrap();
+    let config = Config {
+        tasks: [
+            (
+                "task1".to_string(),
+                Task {
+                    envs: envs.clone(),
+                    script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'"
+                        .to_string(),
+                    cwd: cwd.clone(),
+                    depends: vec![],
+                },
+            ),
+            (
+                "task2".to_string(),
+                Task {
+                    envs: envs.clone(),
+                    script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".to_string(),
+                    cwd: cwd.clone(),
+                    depends: vec![], // vec!["task1".to_string()],
+                },
+            ),
+        ]
+        .into(),
+    };
+    match config
+        .execute(
+            ShellPipeReader::stdin(),
+            ShellPipeWriter::stdout(),
+            ShellPipeWriter::stderr(),
+        )
+        .await
+    {
+        Ok(()) => println!("All tasks are done"),
+        Err(e) => match e {
+            RuskError::TaskError(e) => {
+                eprintln!("{e}");
+                std::process::exit(e.exit_code);
+            }
+            RuskError::ConfigParseError(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
+    }
 }

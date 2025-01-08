@@ -43,11 +43,11 @@ pub struct Task<'a> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigParseError {
-    #[error("Task {task_name} is not executable because of dependency-related issues")]
+    #[error("Task {task_name:?} is not executable because of dependency-related issues")]
     UnexecutableTask { task_name: String },
-    #[error("Task {task_name} is defined multiple times")]
+    #[error("Task {task_name:?} is defined multiple times")]
     DuplicateTaskName { task_name: String },
-    #[error("Task {task_name} script parse error: {error}")]
+    #[error("Task {task_name:?} script parse error: {error:?}")]
     ScriptParseError {
         task_name: String,
         error: anyhow::Error,
@@ -112,7 +112,7 @@ impl TryFrom<Config<'_>> for ParsedConfig {
 pub type TaskResult = Result<(), TaskError>;
 
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("Task {task_name} failed with exit code {exit_code}")]
+#[error("Task {task_name:?} failed with exit code {exit_code}")]
 pub struct TaskError {
     pub task_name: String,
     pub exit_code: i32,

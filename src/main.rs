@@ -1,39 +1,18 @@
-use std::collections::HashMap;
+use rusk::{Rusk, RuskError};
 
-use config::{Rusk, RuskError, Task};
-
-mod config;
+mod files;
+mod rusk;
 
 #[tokio::main]
 async fn main() {
-    let cwd = std::env::current_dir().unwrap();
-    let config = Rusk {
-        envs: std::env::vars().collect(),
-        tasks: [
-            (
-                "task1".into(),
-                Task {
-                    envs: HashMap::new(),
-                    script: "false && echo 'task1 start' && sleep 2 && echo 'task1 done'".into(),
-                    cwd: cwd.clone(),
-                    depends: vec![],
-                },
-            ),
-            (
-                "task2".into(),
-                Task {
-                    envs: HashMap::new(),
-                    script: "echo 'task2 start' && sleep 1 && echo 'task2 done'".into(),
-                    cwd: cwd.clone(),
-                    depends: vec![], // vec!["task1".to_string()],
-                },
-            ),
-        ]
-        .into(),
-    };
-    match config.execute(Default::default()).await {
-        Ok(()) => println!("All tasks are done"),
-        Err(e) => match e {
+    let mut config_files = files::ConfigFiles::new(std::env::vars().collect());
+    config_files.collect(std::env::current_dir().unwrap()).await;
+
+    if let Err(e) = Into::<Rusk>::into(config_files)
+        .execute(Default::default())
+        .await
+    {
+        match e {
             RuskError::TaskError(e) => {
                 eprintln!("{e}");
                 std::process::exit(e.exit_code);
@@ -42,6 +21,6 @@ async fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             }
-        },
+        }
     }
 }

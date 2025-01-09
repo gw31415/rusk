@@ -1,0 +1,10 @@
+[tasks.task1]
+script = '''
+echo 'task1 start' && sleep 2 && echo 'task1 done'
+'''
+
+[tasks.'task2']
+script = '''
+echo 'task2 start' && sleep 1 && echo 'task2 done'
+'''
+# depends = ['task1']

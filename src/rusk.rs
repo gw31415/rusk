@@ -43,11 +43,8 @@ impl Default for IOSet {
 impl Rusk {
     /// Execute tasks
     pub async fn execute(self, io: IOSet) -> Result<(), RuskError> {
-        let parsed = ParsedConfig::try_from(self)?;
-        let fs = parsed
-            .tasks
-            .into_iter()
-            .map(|task| task.execute(io.clone()));
+        let jobs = JobSet::try_from(self)?;
+        let fs = jobs.jobs.into_iter().map(|task| task.execute(io.clone()));
         try_join_all(fs).await?;
         Ok(())
     }
@@ -82,7 +79,7 @@ pub enum ConfigParseError {
     },
 }
 
-impl TryFrom<Rusk> for ParsedConfig {
+impl TryFrom<Rusk> for JobSet {
     type Error = ConfigParseError;
 
     fn try_from(rusk: Rusk) -> Result<Self, Self::Error> {
@@ -93,7 +90,7 @@ impl TryFrom<Rusk> for ParsedConfig {
         let mut tasks = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by(|(_, t1), (_, t2)| t1.depends.len().cmp(&t2.depends.len()));
 
-        let mut parsed_tasks: HashMap<String, ParsedTask> = HashMap::new();
+        let mut parsed_tasks: HashMap<String, Job> = HashMap::new();
 
         for (task_name, task) in tasks {
             if parsed_tasks.contains_key(&task_name) {
@@ -128,7 +125,7 @@ impl TryFrom<Rusk> for ParsedConfig {
 
             parsed_tasks.insert(
                 task_name.clone(),
-                ParsedTask {
+                Job {
                     task_name,
                     script,
                     envs: global_env.clone().into_iter().chain(envs).collect(),
@@ -139,8 +136,8 @@ impl TryFrom<Rusk> for ParsedConfig {
             );
         }
 
-        Ok(ParsedConfig {
-            tasks: parsed_tasks.into_values().collect(),
+        Ok(JobSet {
+            jobs: parsed_tasks.into_values().collect(),
         })
     }
 }
@@ -154,11 +151,11 @@ pub struct TaskError {
     pub exit_code: i32,
 }
 
-struct ParsedConfig {
-    tasks: Vec<ParsedTask>,
+struct JobSet {
+    jobs: Vec<Job>,
 }
 
-struct ParsedTask {
+struct Job {
     task_name: String,
     envs: HashMap<String, String>,
     script: SequentialList,
@@ -168,9 +165,9 @@ struct ParsedTask {
     nexts: Vec<Sender<Result<(), ()>>>,
 }
 
-impl ParsedTask {
+impl Job {
     async fn execute(self, io: IOSet) -> TaskResult {
-        let ParsedTask {
+        let Job {
             task_name,
             envs,
             script,

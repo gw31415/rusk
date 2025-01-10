@@ -1,4 +1,5 @@
 [tasks.task1]
+description = 'task1 description'
 script = '''
 echo 'task1 start' && sleep 2 && echo 'task1 done'
 '''

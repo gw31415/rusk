@@ -1,43 +1,78 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
+    fmt::Display,
     fs::File,
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
 use anyhow::Error;
+use colored::Colorize;
 use futures::future::join_all;
 use ignore::WalkBuilder;
 
 use crate::rusk::{Rusk, Task};
 
-pub struct ConfigFiles {
+/// Configuration files
+pub struct RuskConfigFiles {
     envs: HashMap<String, String>,
     map: HashMap<PathBuf, ConfigFile>,
 }
 
-const RUSKFILE: &str = "rusk.toml";
+/// Check if the filename is ruskfile
+macro_rules! is_ruskfile {
+    ($f: expr) => {
+        matches!($f, "rusk.toml" | ".rusk.toml")
+    };
+}
 
-impl ConfigFiles {
+/// Item of tasks_list
+pub struct TasksListItem<'a> {
+    /// Task name
+    pub name: Cow<'a, str>,
+    /// Task description
+    pub description: Option<Cow<'a, str>>,
+    /// Path to rusk.toml
+    pub path: Cow<'a, Path>,
+}
+
+impl Display for TasksListItem<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}\t", self.name)?;
+        if let Some(description) = &self.description {
+            write!(f, "{} ", description.bold())?;
+        }
+        write!(
+            f,
+            "{} {}",
+            "in".dimmed().italic(),
+            self.path.to_string_lossy().dimmed().yellow().italic(),
+        )
+    }
+}
+
+impl RuskConfigFiles {
+    /// Create a new RuskConfigFiles
     pub fn new(envs: HashMap<String, String>) -> Self {
         Self {
             envs,
             map: Default::default(),
         }
     }
-    pub fn tasks_list(&self) -> Vec<(String, PathBuf)> {
-        self.map
-            .iter()
-            .flat_map(|(path, config)| {
-                config
-                    .tasks
-                    .keys()
-                    .map(move |name| (name.clone(), path.clone()))
+    /// List all tasks
+    pub fn tasks_list(&self) -> impl Iterator<Item = TasksListItem<'_>> {
+        self.map.iter().flat_map(|(path, config)| {
+            config.tasks.iter().map(move |(name, task)| TasksListItem {
+                name: Cow::Borrowed(name),
+                description: task.description.as_deref().map(Cow::Borrowed),
+                path: Cow::Borrowed(path),
             })
-            .collect()
+        })
     }
-    pub async fn collect(&mut self, path: PathBuf) {
+    /// Walk through the directory and find all rusk.toml files
+    pub async fn walkdir(&mut self, path: PathBuf) {
         let configfiles = {
             let configfiles: Arc<Mutex<Vec<_>>> = Default::default();
             WalkBuilder::new(path)
@@ -48,7 +83,9 @@ impl ConfigFiles {
                     Box::new(|res| {
                         if let Ok(entry) = res {
                             if let Some(ft) = entry.file_type() {
-                                if ft.is_file() && entry.file_name() == RUSKFILE {
+                                if ft.is_file()
+                                    && is_ruskfile!(entry.file_name().to_str().unwrap_or(""))
+                                {
                                     configfiles.lock().unwrap().push({
                                         let path = entry.path().to_path_buf();
                                         // make Future of Config
@@ -82,9 +119,9 @@ impl ConfigFiles {
     }
 }
 
-impl From<ConfigFiles> for Rusk {
-    fn from(config_files: ConfigFiles) -> Self {
-        let ConfigFiles { envs, map } = config_files;
+impl From<RuskConfigFiles> for Rusk {
+    fn from(config_files: RuskConfigFiles) -> Self {
+        let RuskConfigFiles { envs, map } = config_files;
         let mut tasks = HashMap::new();
         for (path, config) in map {
             let cwd = path.parent().unwrap();
@@ -123,4 +160,7 @@ struct ConfigTask {
     /// Working directory
     #[serde(default)]
     pub cwd: Option<PathBuf>,
+    /// Description
+    #[serde(default)]
+    pub description: Option<String>,
 }

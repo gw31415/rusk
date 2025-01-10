@@ -10,17 +10,9 @@ pub enum RuskError {
     /// Task execution error
     #[error(transparent)]
     TaskError(#[from] TaskError),
-    /// Configuration parsing error
+    /// JobSet creation error
     #[error(transparent)]
-    ConfigParseError(#[from] ConfigParseError),
-}
-
-/// Rusk configuration
-pub struct Rusk {
-    /// Tasks to be executed
-    pub tasks: HashMap<String, Task>,
-    /// Environment variables that are shared among all tasks
-    pub envs: HashMap<String, String>,
+    JobSetCreationError(#[from] JobSetCreationError),
 }
 
 #[derive(Clone)]
@@ -40,13 +32,103 @@ impl Default for IOSet {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum JobSetCreationError {
+    #[error(transparent)]
+    ConfigParseError(#[from] ConfigParseError),
+    #[error("Task {task_name:?} not found")]
+    TaskNotFound { task_name: String },
+}
+
+/// Rusk configuration
+pub struct Rusk {
+    /// Tasks to be executed
+    pub tasks: HashMap<String, Task>,
+    /// Environment variables that are shared among all tasks
+    pub envs: HashMap<String, String>,
+}
+
 impl Rusk {
     /// Execute tasks
-    pub async fn execute(self, io: IOSet) -> Result<(), RuskError> {
-        let jobs = JobSet::try_from(self)?;
+    pub async fn execute(self, tasknames: &[String], io: IOSet) -> Result<(), RuskError> {
+        let jobs = self.create_jobset(tasknames)?;
         let fs = jobs.jobs.into_iter().map(|task| task.execute(io.clone()));
         try_join_all(fs).await?;
         Ok(())
+    }
+
+    fn create_jobset(self, tasknames: &[String]) -> Result<JobSet, JobSetCreationError> {
+        let Rusk {
+            mut tasks,
+            envs: global_env,
+        } = self;
+        let mut tasks: Vec<_> = if tasknames.is_empty() {
+            tasks.into_iter().collect()
+        } else {
+            let mut res: HashMap<String, Task> = HashMap::new();
+            let mut refer: Vec<&str> = tasknames.iter().map(AsRef::as_ref).collect();
+            while let Some(name) = refer.pop() {
+                if !res.contains_key(name) {
+                    let name = name.to_string();
+                    let Some(task) = tasks.remove(&name) else {
+                        return Err(JobSetCreationError::TaskNotFound { task_name: name })?;
+                    };
+                    res.insert(name.clone(), task);
+                }
+            }
+            res.into_iter().collect()
+        };
+        tasks.sort_by(|(_, t1), (_, t2)| t1.depends.len().cmp(&t2.depends.len()));
+
+        let mut parsed_tasks: HashMap<String, Job> = HashMap::new();
+
+        for (task_name, task) in tasks {
+            if parsed_tasks.contains_key(&task_name) {
+                return Err(ConfigParseError::DuplicateTaskName { task_name })?;
+            }
+
+            let script = {
+                let mut items = Vec::new();
+                for line in task.script.lines() {
+                    items.extend(match deno_task_shell::parser::parse(line) {
+                        Ok(script) => script.items,
+                        Err(error) => {
+                            return Err(ConfigParseError::ScriptParseError { task_name, error })?;
+                        }
+                    });
+                }
+                SequentialList { items }
+            };
+
+            let mut depends = Vec::new();
+            for dep_name in &task.depends {
+                let (tx, rx) = channel::<Result<(), ()>>(1);
+                depends.push(rx);
+                if let Some(dep_task) = parsed_tasks.get_mut(dep_name) {
+                    dep_task.nexts.push(tx);
+                } else {
+                    return Err(ConfigParseError::UnexecutableTask { task_name })?;
+                }
+            }
+
+            let Task { envs, cwd, .. } = task;
+
+            parsed_tasks.insert(
+                task_name.clone(),
+                Job {
+                    task_name,
+                    script,
+                    envs: global_env.clone().into_iter().chain(envs).collect(),
+                    cwd,
+                    depends,
+                    nexts: Vec::new(),
+                },
+            );
+        }
+
+        Ok(JobSet {
+            jobs: parsed_tasks.into_values().collect(),
+        })
     }
 }
 
@@ -77,69 +159,6 @@ pub enum ConfigParseError {
         task_name: String,
         error: anyhow::Error,
     },
-}
-
-impl TryFrom<Rusk> for JobSet {
-    type Error = ConfigParseError;
-
-    fn try_from(rusk: Rusk) -> Result<Self, Self::Error> {
-        let Rusk {
-            tasks,
-            envs: global_env,
-        } = rusk;
-        let mut tasks = tasks.into_iter().collect::<Vec<_>>();
-        tasks.sort_by(|(_, t1), (_, t2)| t1.depends.len().cmp(&t2.depends.len()));
-
-        let mut parsed_tasks: HashMap<String, Job> = HashMap::new();
-
-        for (task_name, task) in tasks {
-            if parsed_tasks.contains_key(&task_name) {
-                return Err(ConfigParseError::DuplicateTaskName { task_name });
-            }
-
-            let script = {
-                let mut items = Vec::new();
-                for line in task.script.lines() {
-                    items.extend(match deno_task_shell::parser::parse(line) {
-                        Ok(script) => script.items,
-                        Err(error) => {
-                            return Err(ConfigParseError::ScriptParseError { task_name, error })
-                        }
-                    });
-                }
-                SequentialList { items }
-            };
-
-            let mut depends = Vec::new();
-            for dep_name in &task.depends {
-                let (tx, rx) = channel::<Result<(), ()>>(1);
-                depends.push(rx);
-                if let Some(dep_task) = parsed_tasks.get_mut(dep_name) {
-                    dep_task.nexts.push(tx);
-                } else {
-                    return Err(ConfigParseError::UnexecutableTask { task_name });
-                }
-            }
-
-            let Task { envs, cwd, .. } = task;
-
-            parsed_tasks.insert(
-                task_name.clone(),
-                Job {
-                    task_name,
-                    script,
-                    envs: global_env.clone().into_iter().chain(envs).collect(),
-                    cwd,
-                    depends,
-                    nexts: Vec::new(),
-                },
-            );
-        }
-
-        Ok(JobSet {
-            jobs: parsed_tasks.into_values().collect(),
-        })
-    }
 }
 
 pub type TaskResult = Result<(), TaskError>;

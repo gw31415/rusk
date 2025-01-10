@@ -8,4 +8,4 @@ echo 'task1 start' && sleep 2 && echo 'task1 done'
 script = '''
 echo 'task2 start' && sleep 1 && echo 'task2 done'
 '''
-# depends = ['task1']
+depends = ['task1']

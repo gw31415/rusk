@@ -66,14 +66,14 @@ impl Rusk {
             tasks.into_iter().collect()
         } else {
             let mut res: HashMap<String, Task> = HashMap::new();
-            let mut refer: Vec<&str> = tasknames.iter().map(AsRef::as_ref).collect();
+            let mut refer: Vec<String> = tasknames.to_vec();
             while let Some(name) = refer.pop() {
-                if !res.contains_key(name) {
-                    let name = name.to_string();
+                if let std::collections::hash_map::Entry::Vacant(e) = res.entry(name.clone()) {
                     let Some(task) = tasks.remove(&name) else {
-                        return Err(JobSetCreationError::TaskNotFound { task_name: name })?;
+                        return Err(JobSetCreationError::TaskNotFound { task_name: name });
                     };
-                    res.insert(name.clone(), task);
+                    refer.extend(task.depends.clone());
+                    e.insert(task);
                 }
             }
             res.into_iter().collect()

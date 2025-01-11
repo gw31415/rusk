@@ -124,14 +124,18 @@ impl From<RuskConfigFiles> for Rusk {
         let RuskConfigFiles { envs, map } = config_files;
         let mut tasks = HashMap::new();
         for (path, config) in map {
-            let cwd = path.parent().unwrap();
+            let configfile_dir = path.parent().unwrap();
             for (name, task) in config.tasks {
                 tasks.insert(
                     name,
                     Task {
                         envs: task.envs,
                         script: task.script,
-                        cwd: task.cwd.unwrap_or_else(|| cwd.to_path_buf()),
+                        cwd: if let Some(cwd) = task.cwd {
+                            configfile_dir.join(cwd)
+                        } else {
+                            configfile_dir.to_path_buf()
+                        },
                         depends: task.depends,
                     },
                 );
@@ -159,7 +163,7 @@ struct ConfigTask {
     pub depends: Vec<String>,
     /// Working directory
     #[serde(default)]
-    pub cwd: Option<PathBuf>,
+    pub cwd: Option<String>,
     /// Description
     #[serde(default)]
     pub description: Option<String>,

@@ -157,7 +157,7 @@ struct TaskDeserializer {
     #[serde(default)]
     pub envs: HashMap<String, String>,
     /// Script to be executed
-    pub script: String,
+    pub script: Option<String>,
     /// Dependencies
     #[serde(default)]
     pub depends: Vec<String>,

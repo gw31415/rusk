@@ -89,14 +89,19 @@ impl Rusk {
 
             let script = {
                 let mut items = Vec::new();
-                for line in task.script.lines() {
-                    items.extend(match deno_task_shell::parser::parse(line) {
-                        Ok(script) => script.items,
-                        Err(error) => {
-                            return Err(ConfigParseError::ScriptParseError { task_name, error })?;
-                        }
-                    });
-                }
+                if let Some(script) = task.script {
+                    for line in script.lines() {
+                        items.extend(match deno_task_shell::parser::parse(line) {
+                            Ok(script) => script.items,
+                            Err(error) => {
+                                return Err(ConfigParseError::ScriptParseError {
+                                    task_name,
+                                    error,
+                                })?;
+                            }
+                        });
+                    }
+                };
                 SequentialList { items }
             };
 
@@ -137,7 +142,7 @@ pub struct Task {
     /// Environment variables that are specific to this task
     pub envs: HashMap<String, String>,
     /// Script to be executed
-    pub script: String,
+    pub script: Option<String>,
     /// Working directory
     pub cwd: PathBuf,
     /// Dependencies

@@ -18,7 +18,7 @@ use crate::rusk::{Rusk, Task};
 /// Configuration files
 pub struct RuskConfigFiles {
     envs: HashMap<String, String>,
-    map: HashMap<PathBuf, ConfigFile>,
+    map: HashMap<PathBuf, ConfigFileDeserializer>,
 }
 
 /// Check if the filename is ruskfile
@@ -94,7 +94,7 @@ impl RuskConfigFiles {
                                                 // Read file & deserialize into Config
                                                 let content_str =
                                                     io::read_to_string(File::open(&path)?)?;
-                                                let content: ConfigFile =
+                                                let content: ConfigFileDeserializer =
                                                     toml::from_str(&content_str)?;
                                                 Ok((path, content))
                                             })()
@@ -146,13 +146,13 @@ impl From<RuskConfigFiles> for Rusk {
 }
 
 #[derive(serde::Deserialize)]
-struct ConfigFile {
+struct ConfigFileDeserializer {
     #[serde(default)]
-    pub tasks: HashMap<String, ConfigTask>,
+    pub tasks: HashMap<String, TaskDeserializer>,
 }
 
 #[derive(serde::Deserialize)]
-struct ConfigTask {
+struct TaskDeserializer {
     /// Environment variables that are specific to this task
     #[serde(default)]
     pub envs: HashMap<String, String>,

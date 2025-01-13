@@ -3,13 +3,18 @@ use std::{env::args, io::BufWriter, io::Write};
 use colored::Colorize;
 use rusk::{Rusk, RuskError};
 
+mod digraph;
 mod files;
 mod rusk;
 
 #[tokio::main]
 async fn main() {
     let mut config_files = files::RuskConfigFiles::new(std::env::vars().collect());
-    config_files.walkdir(std::env::current_dir().unwrap()).await;
+    config_files
+        .walkdir(
+            std::env::current_dir().unwrap(), // TODO: Project root
+        )
+        .await;
     let args: Vec<String> = args().collect();
 
     if args.len() == 1 {
@@ -21,11 +26,11 @@ async fn main() {
     }
 
     if let Err(e) = Into::<Rusk>::into(config_files)
-        .execute(&args[1..], Default::default())
+        .exec(&args[1..], Default::default())
         .await
     {
         match e {
-            RuskError::TaskError(e) => {
+            RuskError::Task(e) => {
                 eprintln!("{e}");
                 std::process::exit(e.exit_code);
             }

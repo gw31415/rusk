@@ -15,8 +15,9 @@ pub struct TreeNode<T> {
 }
 
 impl<T, E, I: IntoFuture<Output = Result<T, E>>> TreeNode<I> {
-    pub async fn into_future(node: TreeNode<I>) -> Result<T, E> {
-        let TreeNode { item, mut children } = node;
+    /// Conversion into a Future
+    pub async fn into_future(self) -> Result<T, E> {
+        let TreeNode { item, mut children } = self;
         while !children.is_empty() {
             let mut buf = Vec::new();
             let mut tasks = Vec::new();

@@ -2,7 +2,7 @@ use std::{env::args, io::BufWriter, io::Write};
 
 use colored::Colorize;
 use rusk::{Rusk, RuskError};
-use ruskfile::RuskFileComposer;
+use ruskfile::RuskfileComposer;
 
 mod digraph;
 mod rusk;
@@ -10,7 +10,7 @@ mod ruskfile;
 
 #[tokio::main]
 async fn main() {
-    let mut composer = RuskFileComposer::new();
+    let mut composer = RuskfileComposer::new();
     composer
         .walkdir(
             std::env::current_dir().unwrap(), // TODO: Project root

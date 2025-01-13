@@ -16,8 +16,8 @@ use crate::rusk::Task;
 
 /// Configuration files
 #[derive(Default)]
-pub struct RuskFileComposer {
-    map: HashMap<PathBuf, ConfigFileDeserializer>,
+pub struct RuskfileComposer {
+    map: HashMap<PathBuf, RuskfileDeserializer>,
 }
 
 /// Check if the filename is ruskfile
@@ -52,8 +52,8 @@ impl Display for TasksListItem<'_> {
     }
 }
 
-impl RuskFileComposer {
-    /// Create a new RuskConfigFiles
+impl RuskfileComposer {
+    /// Create a new Ruskfiles
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
@@ -92,7 +92,7 @@ impl RuskFileComposer {
                                                 // Read file & deserialize into Config
                                                 let content_str =
                                                     io::read_to_string(File::open(&path)?)?;
-                                                let content: ConfigFileDeserializer =
+                                                let content: RuskfileDeserializer =
                                                     toml::from_str(&content_str)?;
                                                 Ok((path, content))
                                             })()
@@ -117,9 +117,9 @@ impl RuskFileComposer {
     }
 }
 
-impl From<RuskFileComposer> for HashMap<String, Task> {
-    fn from(composer: RuskFileComposer) -> Self {
-        let RuskFileComposer { map } = composer;
+impl From<RuskfileComposer> for HashMap<String, Task> {
+    fn from(composer: RuskfileComposer) -> Self {
+        let RuskfileComposer { map } = composer;
         let mut tasks = HashMap::new();
         for (path, config) in map {
             let configfile_dir = path.parent().unwrap();
@@ -154,7 +154,7 @@ impl From<RuskFileComposer> for HashMap<String, Task> {
 }
 
 #[derive(serde::Deserialize)]
-struct ConfigFileDeserializer {
+struct RuskfileDeserializer {
     #[serde(default)]
     pub tasks: HashMap<String, TaskDeserializer>,
 }

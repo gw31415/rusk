@@ -5,7 +5,7 @@ use futures::future::try_join_all;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
-    ruskfile::RuskFileComposer,
+    ruskfile::RuskfileComposer,
 };
 
 /// Rusk error
@@ -45,8 +45,8 @@ pub struct Rusk {
     tasks: HashMap<String, Task>,
 }
 
-impl From<RuskFileComposer> for Rusk {
-    fn from(composer: RuskFileComposer) -> Self {
+impl From<RuskfileComposer> for Rusk {
+    fn from(composer: RuskfileComposer) -> Self {
         Rusk {
             tasks: composer.into(),
         }

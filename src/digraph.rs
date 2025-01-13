@@ -15,7 +15,7 @@ pub struct TreeNode<T> {
 }
 
 impl<T, E, I: IntoFuture<Output = Result<T, E>>> TreeNode<I> {
-    pub async fn r#await(node: TreeNode<I>) -> Result<T, E> {
+    pub async fn into_future(node: TreeNode<I>) -> Result<T, E> {
         let TreeNode { item, mut children } = node;
         while !children.is_empty() {
             let mut buf = Vec::new();
@@ -23,7 +23,7 @@ impl<T, E, I: IntoFuture<Output = Result<T, E>>> TreeNode<I> {
             for child in children {
                 match Rc::try_unwrap(child) {
                     Ok(node) => {
-                        tasks.push(Self::r#await(node));
+                        tasks.push(Self::into_future(node));
                     }
                     Err(rc) => {
                         buf.push(rc);

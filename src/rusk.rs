@@ -59,7 +59,7 @@ impl Rusk {
         let Rusk { tasks } = self;
         let executables = make_executable(tasks, opts)?;
         let graph = TreeNode::new_vec(executables, tasknames)?;
-        try_join_all(graph.into_iter().map(TreeNode::r#await)).await?;
+        try_join_all(graph.into_iter().map(TreeNode::into_future)).await?;
         Ok(())
     }
 }

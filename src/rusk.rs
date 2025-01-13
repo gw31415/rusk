@@ -125,6 +125,9 @@ fn make_executable(
         let Ok(cwd) = cwd.canonicalize() else {
             return Err(TaskParseError::DirectoryNotFound(cwd));
         };
+        if cwd.is_file() {
+            return Err(TaskParseError::DirectoryNotFound(cwd));
+        }
 
         parsed_tasks.insert(
             task_name.clone(),

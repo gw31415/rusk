@@ -1,24 +1,25 @@
-use std::{
-    collections::HashMap, future::Future, future::IntoFuture, path::PathBuf, pin::Pin, rc::Rc,
-};
+use std::{collections::HashMap, future::Future, future::IntoFuture, path::PathBuf, pin::Pin};
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
 
-use crate::digraph::{DigraphItem, TreeNode, TreeNodeCreationError};
+use crate::{
+    digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
+    ruskfile::RuskFileComposer,
+};
 
 /// Rusk error
 #[derive(Debug, thiserror::Error)]
 pub enum RuskError {
     /// TreeNode creation error
     #[error(transparent)]
-    TreeNodeCreation(#[from] TreeNodeCreationError),
-    /// Configuration parsing error
+    TreeNodeBroken(#[from] TreeNodeCreationError),
+    /// Task parsing error
     #[error(transparent)]
-    ConfigParse(#[from] ConfigParseError),
+    TaskUnparsable(#[from] TaskParseError),
     /// Task execution error
     #[error(transparent)]
-    Task(#[from] TaskError),
+    TaskFailed(#[from] TaskError),
 }
 
 #[derive(Clone)]
@@ -41,42 +42,24 @@ impl Default for IOSet {
 /// Rusk configuration
 pub struct Rusk {
     /// Tasks to be executed
-    pub tasks: HashMap<String, Task>,
-    /// Environment variables that are shared among all tasks
-    pub envs: HashMap<String, String>,
+    tasks: HashMap<String, Task>,
 }
 
-async fn exec<T, E, I: IntoFuture<Output = Result<T, E>>>(node: TreeNode<I>) -> Result<T, E> {
-    let TreeNode { item, mut children } = node;
-    while !children.is_empty() {
-        let mut buf = Vec::new();
-        let mut tasks = Vec::new();
-        for child in children {
-            match Rc::try_unwrap(child) {
-                Ok(node) => {
-                    tasks.push(exec(node));
-                }
-                Err(rc) => {
-                    buf.push(rc);
-                }
-            }
+impl From<RuskFileComposer> for Rusk {
+    fn from(composer: RuskFileComposer) -> Self {
+        Rusk {
+            tasks: composer.into(),
         }
-        try_join_all(tasks).await?;
-        children = buf;
     }
-    item.await
 }
 
 impl Rusk {
     /// Execute tasks
-    pub async fn exec(self, tasknames: &[String], io: IOSet) -> Result<(), RuskError> {
-        let Rusk {
-            tasks,
-            envs: global_env,
-        } = self;
-        let executables = make_executable(tasks, io, global_env)?;
+    pub async fn exec(self, tasknames: &[String], opts: ExecuteOpts) -> Result<(), RuskError> {
+        let Rusk { tasks } = self;
+        let executables = make_executable(tasks, opts)?;
         let graph = TreeNode::new_vec(executables, tasknames)?;
-        try_join_all(graph.into_iter().map(exec)).await?;
+        try_join_all(graph.into_iter().map(TreeNode::r#await)).await?;
         Ok(())
     }
 }
@@ -93,11 +76,30 @@ pub struct Task {
     pub depends: Vec<String>,
 }
 
+/// Task execution global options
+pub struct ExecuteOpts {
+    /// Environment variables
+    pub envs: HashMap<String, String>,
+    /// IO
+    pub io: IOSet,
+}
+
+impl Default for ExecuteOpts {
+    fn default() -> Self {
+        Self {
+            envs: std::env::vars().collect(),
+            io: Default::default(),
+        }
+    }
+}
+
 fn make_executable(
     tasks: HashMap<String, Task>,
-    io: IOSet,
-    global_env: HashMap<String, String>,
-) -> Result<HashMap<String, TaskExecutable>, ConfigParseError> {
+    ExecuteOpts {
+        envs: global_env,
+        io,
+    }: ExecuteOpts,
+) -> Result<HashMap<String, TaskExecutable>, TaskParseError> {
     let mut parsed_tasks: HashMap<String, TaskExecutable> = HashMap::new();
 
     for (task_name, task) in tasks {
@@ -108,7 +110,7 @@ fn make_executable(
                     items.extend(match deno_task_shell::parser::parse(line) {
                         Ok(script) => script.items,
                         Err(error) => {
-                            return Err(ConfigParseError::ScriptParseError { task_name, error })?;
+                            return Err(TaskParseError::ScriptParseError { task_name, error })?;
                         }
                     });
                 }
@@ -121,7 +123,7 @@ fn make_executable(
         } = task;
 
         let Ok(cwd) = cwd.canonicalize() else {
-            return Err(ConfigParseError::DirectoryNotFound(cwd));
+            return Err(TaskParseError::DirectoryNotFound(cwd));
         };
 
         parsed_tasks.insert(
@@ -188,9 +190,9 @@ impl DigraphItem for TaskExecutable {
     }
 }
 
-/// Configuration parsing error
+/// Task parsing error
 #[derive(Debug, thiserror::Error)]
-pub enum ConfigParseError {
+pub enum TaskParseError {
     /// Directory not found
     #[error("Directory not found: {0:?}")]
     DirectoryNotFound(PathBuf),
@@ -203,7 +205,7 @@ pub enum ConfigParseError {
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("Task {task_name:?} failed with exit code {exit_code}")]
+#[error("Task {task_name:?} execution failed with exit code {exit_code}")]
 pub struct TaskError {
     pub task_name: String,
     pub exit_code: i32,

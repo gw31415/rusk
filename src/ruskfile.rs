@@ -13,11 +13,11 @@ use colored::Colorize;
 use futures::future::join_all;
 use ignore::WalkBuilder;
 
-use crate::rusk::{Rusk, Task};
+use crate::rusk::Task;
 
 /// Configuration files
-pub struct RuskConfigFiles {
-    envs: HashMap<String, String>,
+#[derive(Default)]
+pub struct RuskFileComposer {
     map: HashMap<PathBuf, ConfigFileDeserializer>,
 }
 
@@ -53,12 +53,11 @@ impl Display for TasksListItem<'_> {
     }
 }
 
-impl RuskConfigFiles {
+impl RuskFileComposer {
     /// Create a new RuskConfigFiles
-    pub fn new(envs: HashMap<String, String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            envs,
-            map: Default::default(),
+            map: HashMap::new(),
         }
     }
     /// List all tasks
@@ -119,29 +118,39 @@ impl RuskConfigFiles {
     }
 }
 
-impl From<RuskConfigFiles> for Rusk {
-    fn from(config_files: RuskConfigFiles) -> Self {
-        let RuskConfigFiles { envs, map } = config_files;
+impl From<RuskFileComposer> for HashMap<String, Task> {
+    fn from(composer: RuskFileComposer) -> Self {
+        let RuskFileComposer { map } = composer;
         let mut tasks = HashMap::new();
         for (path, config) in map {
             let configfile_dir = path.parent().unwrap();
-            for (name, task) in config.tasks {
+            for (
+                name,
+                TaskDeserializer {
+                    envs,
+                    script,
+                    depends,
+                    cwd,
+                    ..
+                },
+            ) in config.tasks
+            {
                 tasks.insert(
                     name,
                     Task {
-                        envs: task.envs,
-                        script: task.script,
-                        cwd: if let Some(cwd) = task.cwd {
+                        envs,
+                        script,
+                        cwd: if let Some(cwd) = cwd {
                             configfile_dir.join(cwd)
                         } else {
                             configfile_dir.to_path_buf()
                         },
-                        depends: task.depends,
+                        depends,
                     },
                 );
             }
         }
-        Self { tasks, envs }
+        tasks
     }
 }
 

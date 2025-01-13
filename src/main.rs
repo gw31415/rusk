@@ -2,15 +2,16 @@ use std::{env::args, io::BufWriter, io::Write};
 
 use colored::Colorize;
 use rusk::{Rusk, RuskError};
+use ruskfile::RuskFileComposer;
 
 mod digraph;
-mod files;
 mod rusk;
+mod ruskfile;
 
 #[tokio::main]
 async fn main() {
-    let mut config_files = files::RuskConfigFiles::new(std::env::vars().collect());
-    config_files
+    let mut composer = RuskFileComposer::new();
+    composer
         .walkdir(
             std::env::current_dir().unwrap(), // TODO: Project root
         )
@@ -19,18 +20,18 @@ async fn main() {
 
     if args.len() == 1 {
         let mut stdout = BufWriter::new(std::io::stdout());
-        for task in config_files.tasks_list() {
+        for task in composer.tasks_list() {
             writeln!(stdout, "{}", task).unwrap();
         }
         return;
     }
 
-    if let Err(e) = Into::<Rusk>::into(config_files)
+    if let Err(e) = Into::<Rusk>::into(composer)
         .exec(&args[1..], Default::default())
         .await
     {
         match e {
-            RuskError::Task(e) => {
+            RuskError::TaskFailed(e) => {
                 eprintln!("{e}");
                 std::process::exit(e.exit_code);
             }

@@ -1,14 +1,40 @@
 use std::{
     collections::{HashMap, HashSet},
+    future::IntoFuture,
     rc::Rc,
 };
+
+use futures::future::try_join_all;
 
 /// Node of a tree
 pub struct TreeNode<T> {
     /// Inner-Item of the node
-    pub item: T,
+    item: T,
     /// Children of the node
-    pub children: Vec<Rc<TreeNode<T>>>,
+    children: Vec<Rc<TreeNode<T>>>,
+}
+
+impl<T, E, I: IntoFuture<Output = Result<T, E>>> TreeNode<I> {
+    pub async fn r#await(node: TreeNode<I>) -> Result<T, E> {
+        let TreeNode { item, mut children } = node;
+        while !children.is_empty() {
+            let mut buf = Vec::new();
+            let mut tasks = Vec::new();
+            for child in children {
+                match Rc::try_unwrap(child) {
+                    Ok(node) => {
+                        tasks.push(Self::r#await(node));
+                    }
+                    Err(rc) => {
+                        buf.push(rc);
+                    }
+                }
+            }
+            try_join_all(tasks).await?;
+            children = buf;
+        }
+        item.await
+    }
 }
 
 /// Error of TreeNode

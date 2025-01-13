@@ -207,7 +207,7 @@ pub enum TaskParseError {
     },
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("Task {task_name:?} execution failed with exit code {exit_code}")]
 pub struct TaskError {
     pub task_name: String,

@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::HashMap,
     fmt::Display,
     fs::File,
@@ -31,11 +30,11 @@ macro_rules! is_ruskfile {
 /// Item of tasks_list
 pub struct TasksListItem<'a> {
     /// Task name
-    pub name: Cow<'a, str>,
+    name: &'a str,
     /// Task description
-    pub description: Option<Cow<'a, str>>,
+    description: Option<&'a str>,
     /// Path to rusk.toml
-    pub path: Cow<'a, Path>,
+    path: &'a Path,
 }
 
 impl Display for TasksListItem<'_> {
@@ -64,9 +63,9 @@ impl RuskFileComposer {
     pub fn tasks_list(&self) -> impl Iterator<Item = TasksListItem<'_>> {
         self.map.iter().flat_map(|(path, config)| {
             config.tasks.iter().map(move |(name, task)| TasksListItem {
-                name: Cow::Borrowed(name),
-                description: task.description.as_deref().map(Cow::Borrowed),
-                path: Cow::Borrowed(path),
+                name,
+                description: task.description.as_deref(),
+                path,
             })
         })
     }

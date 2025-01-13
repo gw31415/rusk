@@ -11,6 +11,7 @@ use anyhow::Error;
 use colored::Colorize;
 use futures::future::join_all;
 use ignore::WalkBuilder;
+use toml::Table;
 
 use crate::rusk::Task;
 
@@ -123,17 +124,13 @@ impl From<RuskfileComposer> for HashMap<String, Task> {
         let mut tasks = HashMap::new();
         for (path, config) in map {
             let configfile_dir = path.parent().unwrap();
-            for (
-                name,
-                TaskDeserializer {
+            for (name, TaskDeserializer { inner, .. }) in config.tasks {
+                let TaskDeserializerInner {
                     envs,
                     script,
                     depends,
                     cwd,
-                    ..
-                },
-            ) in config.tasks
-            {
+                } = inner.try_into().unwrap(); // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
                 tasks.insert(
                     name,
                     Task {
@@ -156,23 +153,29 @@ impl From<RuskfileComposer> for HashMap<String, Task> {
 #[derive(serde::Deserialize)]
 struct RuskfileDeserializer {
     #[serde(default)]
-    pub tasks: HashMap<String, TaskDeserializer>,
+    tasks: HashMap<String, TaskDeserializer>,
 }
 
 #[derive(serde::Deserialize)]
 struct TaskDeserializer {
-    /// Environment variables that are specific to this task
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
-    /// Script to be executed
-    pub script: Option<String>,
-    /// Dependencies
-    #[serde(default)]
-    pub depends: Vec<String>,
-    /// Working directory
-    #[serde(default)]
-    pub cwd: Option<String>,
+    #[serde(flatten)]
+    inner: Table,
     /// Description
     #[serde(default)]
-    pub description: Option<String>,
+    description: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct TaskDeserializerInner {
+    /// Environment variables that are specific to this task
+    #[serde(default)]
+    envs: HashMap<String, String>,
+    /// Script to be executed
+    script: Option<String>,
+    /// Dependencies
+    #[serde(default)]
+    depends: Vec<String>,
+    /// Working directory
+    #[serde(default)]
+    cwd: Option<String>,
 }

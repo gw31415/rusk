@@ -16,9 +16,9 @@ async fn main() {
             std::env::current_dir().unwrap(), // TODO: Project root
         )
         .await;
-    let args: Vec<String> = args().collect();
+    let args: Vec<String> = args().skip(1).collect();
 
-    if args.len() == 1 {
+    if args.is_empty() {
         let mut stdout = BufWriter::new(std::io::stdout());
         for task in composer.tasks_list() {
             writeln!(stdout, "{}", task).unwrap();
@@ -27,7 +27,7 @@ async fn main() {
     }
 
     if let Err(e) = Into::<Rusk>::into(composer)
-        .exec(&args[1..], Default::default())
+        .exec(args, Default::default())
         .await
     {
         match e {

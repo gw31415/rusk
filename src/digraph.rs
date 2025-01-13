@@ -53,26 +53,28 @@ impl<D: DigraphItem> TreeNode<D> {
     /// Create trees from a directed graph.
     pub fn new_vec(
         mut hashmap: HashMap<String, D>,
-        targets: impl IntoIterator<Item: AsRef<str>>,
+        targets: impl IntoIterator<Item = String>,
     ) -> Result<Vec<Self>, TreeNodeCreationError> {
         fn convert<D: DigraphItem>(
             base: &mut HashMap<String, D>,
             converted: &mut HashMap<String, (Rc<TreeNode<D>>, HashSet<String>)>,
-            item: D,
+            label: String,
         ) -> Result<TreeNode<D>, TreeNodeCreationError> {
+            let Some(item) = base.remove(&label) else {
+                return Err(TreeNodeCreationError::DependencyNotFound(label));
+            };
             let mut children = vec![];
             for dep_name in item.dependencies() {
                 let dep_name = dep_name.as_ref();
-                let child = if let Some(dep_item) = base.remove(dep_name) {
-                    let node = Rc::new(convert(base, converted, dep_item)?);
+                let child = if base.contains_key(dep_name) {
+                    let node = Rc::new(convert(base, converted, dep_name.to_string())?);
                     converted.insert(dep_name.to_string(), (node.clone(), Default::default()));
                     node
                 } else if let Some((dep_item, depend_labels_all)) = converted.get_mut(dep_name) {
-                    let dep_name = dep_name.to_string();
-                    if depend_labels_all.contains(&dep_name) {
-                        return Err(TreeNodeCreationError::CircularDependency(dep_name));
+                    if depend_labels_all.contains(&label) {
+                        return Err(TreeNodeCreationError::CircularDependency(label));
                     }
-                    depend_labels_all.insert(dep_name);
+                    depend_labels_all.insert(label.clone());
                     dep_item.clone()
                 } else {
                     return Err(TreeNodeCreationError::DependencyNotFound(
@@ -87,12 +89,7 @@ impl<D: DigraphItem> TreeNode<D> {
         let mut roots = vec![];
         let mut converted = Default::default();
         for label in targets {
-            let Some(d) = hashmap.remove(label.as_ref()) else {
-                return Err(TreeNodeCreationError::DependencyNotFound(
-                    label.as_ref().to_string(),
-                ));
-            };
-            let node = convert(&mut hashmap, &mut converted, d)?;
+            let node = convert(&mut hashmap, &mut converted, label)?;
             roots.push(node);
         }
         Ok(roots)

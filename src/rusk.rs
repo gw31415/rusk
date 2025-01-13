@@ -55,7 +55,11 @@ impl From<RuskfileComposer> for Rusk {
 
 impl Rusk {
     /// Execute tasks
-    pub async fn exec(self, tasknames: &[String], opts: ExecuteOpts) -> Result<(), RuskError> {
+    pub async fn exec(
+        self,
+        tasknames: impl IntoIterator<Item = String>,
+        opts: ExecuteOpts,
+    ) -> Result<(), RuskError> {
         let Rusk { tasks } = self;
         let executables = make_executable(tasks, opts)?;
         let graph = TreeNode::new_vec(executables, tasknames)?;

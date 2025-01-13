@@ -1,14 +1,9 @@
-[tasks.sub1]
-description = 'sub task 1'
-script = '''
-echo 'sub1 start' && sleep 2 && echo '1 done'
-'''
+[tasks.all]
+script = "echo 'all done'"
+depends = ['single', 'async']
 
-[tasks.'sub2']
-description = 'sub task 2'
-script = '''
-echo 'sub2 start' && sleep 1 && echo '2 done'
-'''
+[tasks.single]
+script = "echo 'task1 start' && sleep 1.5 && echo 'task1 done'"
 
 [tasks.async]
 script = '''
@@ -16,13 +11,18 @@ echo 'sub1 & sub2 done'
 '''
 depends = ['sub1', 'sub2']
 
-[tasks.task1]
+[tasks.sub1]
+description = 'sub task 1'
 script = '''
-echo 'task1 start' && sleep 1.5 && echo 'task1 done'
+echo 'sub1 start'
+sleep 2
+echo '1 done'
 '''
 
-[tasks.all]
+[tasks.'sub2']
+description = 'sub task 2'
 script = '''
-echo 'all done'
+echo 'sub2 start'
+sleep 1
+echo '2 done'
 '''
-depends = ['task1', 'async']

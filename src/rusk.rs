@@ -1,4 +1,10 @@
-use std::{collections::HashMap, future::Future, future::IntoFuture, path::PathBuf, pin::Pin};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    future::{Future, IntoFuture},
+    path::PathBuf,
+    pin::Pin,
+};
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
@@ -63,7 +69,7 @@ impl Rusk {
         let Rusk { tasks } = self;
         let executables = make_executable(tasks, opts)?;
         let graph = TreeNode::new_vec(executables, tasknames)?;
-        try_join_all(graph.into_iter().map(TreeNode::into_future)).await?;
+        try_join_all(graph.into_iter().map(IntoFuture::into_future)).await?;
         Ok(())
     }
 }

@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    future::IntoFuture,
+    future::{Future, IntoFuture},
+    pin::Pin,
     rc::Rc,
 };
 
@@ -14,27 +15,30 @@ pub struct TreeNode<T> {
     children: Vec<Rc<TreeNode<T>>>,
 }
 
-impl<T, E, I: IntoFuture<Output = Result<T, E>>> TreeNode<I> {
-    /// Conversion into a Future
-    pub async fn into_future(self) -> Result<T, E> {
+impl<T, E, I: IntoFuture<Output = Result<T, E>> + 'static> IntoFuture for TreeNode<I> {
+    type Output = Result<T, E>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
+    fn into_future(self) -> Self::IntoFuture {
         let TreeNode { item, mut children } = self;
-        while !children.is_empty() {
-            let mut buf = Vec::new();
-            let mut tasks = Vec::new();
-            for child in children {
-                match Rc::try_unwrap(child) {
-                    Ok(node) => {
-                        tasks.push(Self::into_future(node));
-                    }
-                    Err(rc) => {
-                        buf.push(rc);
+        Box::pin(async move {
+            while !children.is_empty() {
+                let mut buf = Vec::new();
+                let mut tasks = Vec::new();
+                for child in children {
+                    match Rc::try_unwrap(child) {
+                        Ok(node) => {
+                            tasks.push(Self::into_future(node));
+                        }
+                        Err(rc) => {
+                            buf.push(rc);
+                        }
                     }
                 }
+                try_join_all(tasks).await?;
+                children = buf;
             }
-            try_join_all(tasks).await?;
-            children = buf;
-        }
-        item.await
+            item.await
+        })
     }
 }
 

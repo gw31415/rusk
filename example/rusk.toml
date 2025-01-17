@@ -3,7 +3,7 @@ script = "echo 'all done'"
 depends = ['single', 'async']
 
 [tasks.single]
-script = "echo 'task1 start' && sleep 1.5 && echo 'task1 done'"
+script = "echo 'single start' && sleep 1.5 && echo 'single done'"
 
 [tasks.async]
 script = '''
@@ -32,4 +32,6 @@ echo '2 done'
 [tasks.subsub]
 script = '''
 echo 'subsub called'
+sleep 0.3
+echo 'subsub done, then sub1&sub2 allowed to continue'
 '''

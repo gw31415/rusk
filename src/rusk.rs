@@ -9,6 +9,7 @@ use std::{
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
+use tokio::sync::watch::Receiver;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
@@ -161,15 +162,43 @@ async fn exec_all(
     roots: impl IntoIterator<Item = TreeNode<TaskExecutable>>,
 ) -> Result<(), TaskError> {
     async fn exec_node(node: &TreeNode<TaskExecutable>) -> Result<(), TaskError> {
-        // 1) Execute all children in parallel:
         let child_futures = node.children.iter().map(|child| exec_node(child));
         try_join_all(child_futures).await?;
-        let task = { node.item.0.try_borrow_mut().unwrap().take() };
-        if let Some(task) = task {
-            task.await
-        } else {
-            Ok(())
-        }
+        let res = 'res: {
+            'early_return: {
+                let mut rx = match &node.item.0.try_borrow().unwrap() as &TaskExecutableState {
+                    TaskExecutableState::Done(result) => return result.clone(),
+                    TaskExecutableState::Processing(rx) => {
+                        if let Some(res) = rx.borrow().as_ref() {
+                            break 'res res.clone();
+                        }
+                        rx.clone() // チャンネルをブロック外に持ち出し、**node.item.0 の参照を解放** する
+                    }
+                    _ => {
+                        break 'early_return; // タスクを実行する必要がある
+                    }
+                };
+
+                // タスクが実行中の場合 (Processing)、結果を待つ
+                rx.changed().await.unwrap();
+                break 'res rx.borrow().as_ref().unwrap().clone();
+            }
+
+            // もしタスクを実際に実行する場合、Watcherを作成して終了時に結果を送信する
+            let (tx, rx) = tokio::sync::watch::channel(None);
+            let TaskExecutableState::Initialized(inner) = std::mem::replace(
+                &mut node.item.0.try_borrow_mut().unwrap() as &mut TaskExecutableState,
+                TaskExecutableState::Processing(rx),
+            ) else {
+                unreachable!()
+            };
+            let res = inner.into_future().await;
+            tx.send(Some(res.clone())).unwrap();
+            res
+        };
+
+        *node.item.0.try_borrow_mut().unwrap() = TaskExecutableState::Done(res.clone());
+        res
     }
 
     let futures = roots
@@ -179,7 +208,13 @@ async fn exec_all(
     Ok(())
 }
 
-struct TaskExecutable(RefCell<Option<TaskExecutableInner>>);
+enum TaskExecutableState {
+    Initialized(TaskExecutableInner),
+    Processing(Receiver<Option<Result<(), TaskError>>>),
+    Done(Result<(), TaskError>),
+}
+
+struct TaskExecutable(RefCell<TaskExecutableState>);
 
 struct TaskExecutableInner {
     io: IOSet,
@@ -192,7 +227,7 @@ struct TaskExecutableInner {
 
 impl From<TaskExecutableInner> for TaskExecutable {
     fn from(val: TaskExecutableInner) -> Self {
-        TaskExecutable(RefCell::new(Some(val)))
+        TaskExecutable(RefCell::new(TaskExecutableState::Initialized(val)))
     }
 }
 
@@ -232,12 +267,11 @@ impl IntoFuture for TaskExecutableInner {
 impl DigraphItem for TaskExecutable {
     fn dependencies(&self) -> impl IntoIterator<Item: AsRef<str>> {
         // TODO: Mutexの中身をコピーせずに参照を返す方法があればそれを使いたい
-        self.0
-            .borrow()
-            .as_ref()
-            .expect("TaskExecutable is already consumed")
-            .depends
-            .clone()
+        let state: &TaskExecutableState = &self.0.borrow();
+        match state {
+            TaskExecutableState::Initialized(inner) => inner.depends.clone(),
+            _ => panic!("TaskExecutable is already called"),
+        }
     }
 }
 
@@ -255,7 +289,7 @@ pub enum TaskParseError {
     },
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 #[error("Task {task_name:?} execution failed with exit code {exit_code}")]
 pub struct TaskError {
     pub task_name: String,

@@ -1,10 +1,10 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Debug,
     future::{Future, IntoFuture},
     path::PathBuf,
     pin::Pin,
-    sync::RwLock,
 };
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
@@ -164,7 +164,7 @@ async fn exec_all(
         // 1) Execute all children in parallel:
         let child_futures = node.children.iter().map(|child| exec_node(child));
         try_join_all(child_futures).await?;
-        let task = { node.item.0.write().unwrap().take() };
+        let task = { node.item.0.try_borrow_mut().unwrap().take() };
         if let Some(task) = task {
             task.into_future().await
         } else {
@@ -179,7 +179,7 @@ async fn exec_all(
     Ok(())
 }
 
-struct TaskExecutable(RwLock<Option<TaskExecutableInner>>);
+struct TaskExecutable(RefCell<Option<TaskExecutableInner>>);
 
 struct TaskExecutableInner {
     io: IOSet,
@@ -192,7 +192,7 @@ struct TaskExecutableInner {
 
 impl From<TaskExecutableInner> for TaskExecutable {
     fn from(val: TaskExecutableInner) -> Self {
-        TaskExecutable(RwLock::new(Some(val)))
+        TaskExecutable(RefCell::new(Some(val)))
     }
 }
 
@@ -233,8 +233,7 @@ impl DigraphItem for TaskExecutable {
     fn dependencies(&self) -> impl IntoIterator<Item: AsRef<str>> {
         // TODO: Mutexの中身をコピーせずに参照を返す方法があればそれを使いたい
         self.0
-            .read()
-            .unwrap()
+            .borrow()
             .as_ref()
             .expect("TaskExecutable is already consumed")
             .depends

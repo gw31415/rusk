@@ -13,6 +13,7 @@ depends = ['sub1', 'sub2']
 
 [tasks.sub1]
 description = 'sub task 1'
+depends = ['subsub']
 script = '''
 echo 'sub1 start'
 sleep 2
@@ -21,8 +22,14 @@ echo '1 done'
 
 [tasks.'sub2']
 description = 'sub task 2'
+depends = ['subsub']
 script = '''
 echo 'sub2 start'
 sleep 1
 echo '2 done'
+'''
+
+[tasks.subsub]
+script = '''
+echo 'subsub called'
 '''

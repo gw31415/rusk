@@ -4,6 +4,7 @@ use std::{
     future::{Future, IntoFuture},
     path::PathBuf,
     pin::Pin,
+    sync::RwLock,
 };
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
@@ -69,7 +70,7 @@ impl Rusk {
         let Rusk { tasks } = self;
         let executables = make_executable(tasks, opts)?;
         let graph = TreeNode::new_vec(executables, tasknames)?;
-        try_join_all(graph.into_iter().map(IntoFuture::into_future)).await?;
+        exec_all(graph).await?;
         Ok(())
     }
 }
@@ -141,21 +142,46 @@ fn make_executable(
 
         parsed_tasks.insert(
             task_name.clone(),
-            TaskExecutable {
+            TaskExecutableInner {
                 io: io.clone(),
                 task_name,
                 script,
                 depends,
                 envs: global_env.clone().into_iter().chain(envs).collect(),
                 cwd,
-            },
+            }
+            .into(),
         );
     }
 
     Ok(parsed_tasks)
 }
 
-struct TaskExecutable {
+async fn exec_all(
+    roots: impl IntoIterator<Item = TreeNode<TaskExecutable>>,
+) -> Result<(), TaskError> {
+    async fn exec_node(node: &TreeNode<TaskExecutable>) -> Result<(), TaskError> {
+        // 1) Execute all children in parallel:
+        let child_futures = node.children.iter().map(|child| exec_node(child));
+        try_join_all(child_futures).await?;
+        let task = { node.item.0.write().unwrap().take() };
+        if let Some(task) = task {
+            task.into_future().await
+        } else {
+            Ok(())
+        }
+    }
+
+    let futures = roots
+        .into_iter()
+        .map(|root| async move { exec_node(&root).await });
+    try_join_all(futures).await?;
+    Ok(())
+}
+
+struct TaskExecutable(RwLock<Option<TaskExecutableInner>>);
+
+struct TaskExecutableInner {
     io: IOSet,
     task_name: String,
     envs: HashMap<String, String>,
@@ -164,12 +190,18 @@ struct TaskExecutable {
     depends: Vec<String>,
 }
 
-impl IntoFuture for TaskExecutable {
+impl From<TaskExecutableInner> for TaskExecutable {
+    fn from(val: TaskExecutableInner) -> Self {
+        TaskExecutable(RwLock::new(Some(val)))
+    }
+}
+
+impl IntoFuture for TaskExecutableInner {
     type Output = Result<(), TaskError>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move {
-            let Self {
+            let TaskExecutableInner {
                 io,
                 task_name,
                 envs,
@@ -199,7 +231,14 @@ impl IntoFuture for TaskExecutable {
 
 impl DigraphItem for TaskExecutable {
     fn dependencies(&self) -> impl IntoIterator<Item: AsRef<str>> {
-        self.depends.iter()
+        // TODO: Mutexの中身をコピーせずに参照を返す方法があればそれを使いたい
+        self.0
+            .read()
+            .unwrap()
+            .as_ref()
+            .expect("TaskExecutable is already consumed")
+            .depends
+            .clone()
     }
 }
 

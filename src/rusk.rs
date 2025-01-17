@@ -166,7 +166,7 @@ async fn exec_all(
         try_join_all(child_futures).await?;
         let task = { node.item.0.try_borrow_mut().unwrap().take() };
         if let Some(task) = task {
-            task.into_future().await
+            task.await
         } else {
             Ok(())
         }

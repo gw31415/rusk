@@ -1,8 +1,9 @@
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
     collections::HashMap,
     fmt::Debug,
     future::{Future, IntoFuture},
+    ops::Deref,
     path::PathBuf,
     pin::Pin,
 };
@@ -271,13 +272,11 @@ impl IntoFuture for TaskExecutableInner {
 }
 
 impl DigraphItem for TaskExecutable {
-    fn dependencies(&self) -> impl IntoIterator<Item: AsRef<str>> {
-        // TODO: Mutexの中身をコピーせずに参照を返す方法があればそれを使いたい
-        let state: &TaskExecutableState = &self.0.borrow();
-        match state {
-            TaskExecutableState::Initialized(inner) => inner.depends.clone(),
+    fn children(&self) -> impl Deref<Target = [impl Deref<Target = str>]> {
+        Ref::map::<[String], _>(self.0.borrow(), |state| match state {
+            TaskExecutableState::Initialized(inner) => inner.depends.as_slice(),
             _ => panic!("TaskExecutable is already called"),
-        }
+        })
     }
 }
 

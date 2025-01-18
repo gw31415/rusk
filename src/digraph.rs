@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    ops::Deref,
     rc::Rc,
 };
 
@@ -37,8 +38,8 @@ impl<D: DigraphItem> TreeNode<D> {
                 return Err(TreeNodeCreationError::DependencyNotFound(label));
             };
             let mut children = vec![];
-            for dep_name in item.dependencies() {
-                let dep_name = dep_name.as_ref();
+            for dep_name in item.children().iter() {
+                let dep_name = dep_name.deref();
                 let child = if base.contains_key(dep_name) {
                     let node = Rc::new(convert(base, converted, dep_name.to_string())?);
                     converted.insert(dep_name.to_string(), (node.clone(), Default::default()));
@@ -71,6 +72,6 @@ impl<D: DigraphItem> TreeNode<D> {
 
 /// Vertex of a directed graph
 pub trait DigraphItem {
-    /// Get dependencies of the vertex
-    fn dependencies(&self) -> impl IntoIterator<Item: AsRef<str>>;
+    /// Get children of the vertex
+    fn children(&self) -> impl Deref<Target = [impl Deref<Target = str>]>;
 }

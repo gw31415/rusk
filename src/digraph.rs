@@ -26,43 +26,74 @@ pub enum TreeNodeCreationError {
 impl<D: DigraphItem> TreeNode<D> {
     /// Create trees from a directed graph.
     pub fn new_vec(
-        mut hashmap: HashMap<String, D>,
+        hashmap: HashMap<String, D>,
         targets: impl IntoIterator<Item = String>,
     ) -> Result<Vec<Self>, TreeNodeCreationError> {
+        enum RawOrNode<D> {
+            Raw(D),
+            Node(Rc<TreeNode<D>>),
+        }
         fn convert<D: DigraphItem>(
-            base: &mut HashMap<String, D>,
-            converted: &mut HashMap<String, (Rc<TreeNode<D>>, HashSet<String>)>,
-            label: String,
+            name: String,
+            raw: D,
+            list: &mut HashMap<String, RawOrNode<D>>,
+            parents: &HashSet<&str>,
         ) -> Result<TreeNode<D>, TreeNodeCreationError> {
-            let Some(item) = base.remove(&label) else {
-                return Err(TreeNodeCreationError::ItemNotFound(label));
+            let parents = {
+                let mut parents = parents.clone();
+                parents.insert(&name);
+                parents
             };
+
             let mut children = vec![];
-            for dep_name in item.children().iter() {
+            for dep_name in raw.children().iter() {
                 let dep_name = dep_name.as_ref();
-                let child = if base.contains_key(dep_name) {
-                    let node = Rc::new(convert(base, converted, dep_name.to_string())?);
-                    converted.insert(dep_name.to_string(), (node.clone(), Default::default()));
-                    node
-                } else if let Some((dep_item, depend_labels_all)) = converted.get_mut(dep_name) {
-                    if depend_labels_all.contains(&label) {
-                        return Err(TreeNodeCreationError::CircularDependency(label));
-                    }
-                    depend_labels_all.insert(label.clone());
-                    dep_item.clone()
-                } else {
+                if parents.contains(dep_name) || dep_name == name {
+                    return Err(TreeNodeCreationError::CircularDependency(
+                        dep_name.to_string(),
+                    ));
+                }
+
+                let Some(item) = list.remove(dep_name) else {
                     return Err(TreeNodeCreationError::ItemNotFound(dep_name.to_string()));
                 };
-                children.push(child);
+                match item {
+                    RawOrNode::Raw(dep_item) => {
+                        let node =
+                            Rc::new(convert(dep_name.to_string(), dep_item, list, &parents)?);
+                        list.insert(dep_name.to_string(), RawOrNode::Node(node.clone()));
+                        children.push(node);
+                    }
+                    RawOrNode::Node(dep_node) => {
+                        list.insert(dep_name.to_string(), RawOrNode::Node(dep_node.clone()));
+                        children.push(dep_node);
+                    }
+                }
             }
-            Ok(TreeNode::<D> { item, children })
+            Ok(TreeNode::<D> {
+                item: raw,
+                children,
+            })
         }
 
         let mut roots = vec![];
-        let mut converted = Default::default();
+        let mut hashmap = hashmap
+            .into_iter()
+            .map(|(k, v)| (k, RawOrNode::Raw(v)))
+            .collect::<HashMap<_, _>>();
         for label in targets {
-            let node = convert(&mut hashmap, &mut converted, label)?;
-            roots.push(node);
+            let Some(item) = hashmap.remove(&label) else {
+                return Err(TreeNodeCreationError::ItemNotFound(label));
+            };
+            match item {
+                RawOrNode::Raw(raw) => {
+                    let node = convert(label, raw, &mut hashmap, &Default::default())?;
+                    roots.push(node);
+                }
+                RawOrNode::Node(_) => {
+                    return Err(TreeNodeCreationError::CircularDependency(label));
+                }
+            }
         }
         Ok(roots)
     }

@@ -164,41 +164,7 @@ async fn exec_all(
     async fn exec_node(node: &TreeNode<TaskExecutable>) -> Result<(), TaskError> {
         let child_futures = node.children.iter().map(|child| exec_node(child));
         try_join_all(child_futures).await?;
-        let res = 'res: {
-            'early_return: {
-                let mut rx = match &node.item.0.try_borrow().unwrap() as &TaskExecutableState {
-                    TaskExecutableState::Done(result) => return result.clone(),
-                    TaskExecutableState::Processing(rx) => {
-                        if let Some(res) = rx.borrow().as_ref() {
-                            break 'res res.clone();
-                        }
-                        rx.clone() // チャンネルをブロック外に持ち出し、**node.item.0 の参照を解放** する
-                    }
-                    _ => {
-                        break 'early_return; // タスクを実行する必要がある
-                    }
-                };
-
-                // タスクが実行中の場合 (Processing)、結果を待つ
-                rx.changed().await.unwrap();
-                break 'res rx.borrow().as_ref().unwrap().clone();
-            }
-
-            // もしタスクを実際に実行する場合、Watcherを作成して終了時に結果を送信する
-            let (tx, rx) = tokio::sync::watch::channel(None);
-            let TaskExecutableState::Initialized(inner) = std::mem::replace(
-                &mut node.item.0.try_borrow_mut().unwrap() as &mut TaskExecutableState,
-                TaskExecutableState::Processing(rx),
-            ) else {
-                unreachable!()
-            };
-            let res = inner.into_future().await;
-            tx.send(Some(res.clone())).unwrap();
-            res
-        };
-
-        *node.item.0.try_borrow_mut().unwrap() = TaskExecutableState::Done(res.clone());
-        res
+        node.item.as_future().await
     }
 
     let futures = roots
@@ -215,6 +181,46 @@ enum TaskExecutableState {
 }
 
 struct TaskExecutable(RefCell<TaskExecutableState>);
+
+impl TaskExecutable {
+    pub async fn as_future(&self) -> Result<(), TaskError> {
+        let res = 'res: {
+            'early_return: {
+                let mut rx = match &self.0.try_borrow().unwrap() as &TaskExecutableState {
+                    TaskExecutableState::Done(result) => return result.clone(),
+                    TaskExecutableState::Processing(rx) => {
+                        if let Some(res) = rx.borrow().as_ref() {
+                            break 'res res.clone();
+                        }
+                        rx.clone() // チャンネルをブロック外に持ち出し、**self.0 の参照を解放** する
+                    }
+                    _ => {
+                        break 'early_return; // タスクを実行する必要がある
+                    }
+                };
+
+                // タスクが実行中の場合 (Processing)、結果を待つ
+                rx.changed().await.unwrap();
+                break 'res rx.borrow().as_ref().unwrap().clone();
+            }
+
+            // もしタスクを実際に実行する場合、Watcherを作成して終了時に結果を送信する
+            let (tx, rx) = tokio::sync::watch::channel(None);
+            let TaskExecutableState::Initialized(inner) = std::mem::replace(
+                &mut self.0.try_borrow_mut().unwrap() as &mut TaskExecutableState,
+                TaskExecutableState::Processing(rx),
+            ) else {
+                unreachable!()
+            };
+            let res = inner.into_future().await;
+            tx.send(Some(res.clone())).unwrap();
+            res
+        };
+
+        *self.0.try_borrow_mut().unwrap() = TaskExecutableState::Done(res.clone());
+        res
+    }
+}
 
 struct TaskExecutableInner {
     io: IOSet,

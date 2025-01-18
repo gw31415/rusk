@@ -85,14 +85,9 @@ impl<D: DigraphItem> TreeNode<D> {
             let Some(item) = hashmap.remove(&label) else {
                 return Err(TreeNodeCreationError::ItemNotFound(label));
             };
-            match item {
-                RawOrNode::Raw(raw) => {
-                    let node = convert(label, raw, &mut hashmap, &Default::default())?;
-                    roots.push(node);
-                }
-                RawOrNode::Node(_) => {
-                    return Err(TreeNodeCreationError::CircularDependency(label));
-                }
+            if let RawOrNode::Raw(raw) = item {
+                let node = convert(label, raw, &mut hashmap, &Default::default())?;
+                roots.push(node);
             }
         }
         Ok(roots)

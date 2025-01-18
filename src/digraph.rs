@@ -15,9 +15,9 @@ pub struct TreeNode<T> {
 /// Error of TreeNode
 #[derive(Debug, thiserror::Error)]
 pub enum TreeNodeCreationError {
-    /// Dependency not found
-    #[error("Dependency named {0:?} not found")]
-    DependencyNotFound(String),
+    /// Item not found
+    #[error("Item named {0:?} not found")]
+    ItemNotFound(String),
     /// Circular dependency found
     #[error("Circular dependency found around {0:?}")]
     CircularDependency(String),
@@ -35,7 +35,7 @@ impl<D: DigraphItem> TreeNode<D> {
             label: String,
         ) -> Result<TreeNode<D>, TreeNodeCreationError> {
             let Some(item) = base.remove(&label) else {
-                return Err(TreeNodeCreationError::DependencyNotFound(label));
+                return Err(TreeNodeCreationError::ItemNotFound(label));
             };
             let mut children = vec![];
             for dep_name in item.children().iter() {
@@ -51,9 +51,7 @@ impl<D: DigraphItem> TreeNode<D> {
                     depend_labels_all.insert(label.clone());
                     dep_item.clone()
                 } else {
-                    return Err(TreeNodeCreationError::DependencyNotFound(
-                        dep_name.to_string(),
-                    ));
+                    return Err(TreeNodeCreationError::ItemNotFound(dep_name.to_string()));
                 };
                 children.push(child);
             }

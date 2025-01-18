@@ -46,9 +46,9 @@ impl Display for TasksListItem<'_> {
         }
         write!(
             f,
-            "{} {}",
+            "({} {})",
             "in".dimmed().italic(),
-            self.path.to_string_lossy().dimmed().yellow().italic(),
+            self.path.to_string_lossy().yellow().dimmed().italic(),
         )
     }
 }

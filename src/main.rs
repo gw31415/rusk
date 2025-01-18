@@ -27,21 +27,32 @@ async fn main() {
         return;
     }
 
-    if let Err(e) = Into::<Rusk>::into(composer)
-        .exec(args, Default::default())
-        .await
-    {
-        match e {
-            RuskError::TaskFailed(e) => {
-                eprint!("{} ", "Abort:".bold().red());
-                eprintln!("{e}");
-                std::process::exit(e.exit_code);
-            }
-            e => {
-                eprint!("{} ", "Error:".bold().red());
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
+    #[derive(Debug, thiserror::Error)]
+    enum MainError {
+        #[error(transparent)]
+        RuskError(#[from] RuskError),
+        #[error(transparent)]
+        RuskfileConvertError(#[from] ruskfile::RuskfileConvertError),
+    }
+
+    let res: Result<(), MainError> = async move {
+        let composer = Rusk::try_from(composer)?;
+        composer.exec(args, Default::default()).await?;
+        Ok(())
+    }
+    .await;
+
+    match res {
+        Err(MainError::RuskError(RuskError::TaskFailed(e))) => {
+            eprint!("{} ", "Abort:".bold().red());
+            eprintln!("{e}");
+            std::process::exit(e.exit_code);
         }
+        Err(e) => {
+            eprint!("{} ", "Error:".bold().red());
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        _ => (),
     }
 }

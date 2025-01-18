@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     fmt::Display,
     fs::File,
     io,
@@ -118,8 +118,15 @@ impl RuskfileComposer {
     }
 }
 
-impl From<RuskfileComposer> for HashMap<String, Task> {
-    fn from(composer: RuskfileComposer) -> Self {
+#[derive(Debug, thiserror::Error)]
+pub enum RuskfileConvertError {
+    #[error("Task {0:?} is duplicated")]
+    DuplicatedTaskName(String),
+}
+
+impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
+    type Error = RuskfileConvertError;
+    fn try_from(composer: RuskfileComposer) -> Result<Self, Self::Error> {
         let RuskfileComposer { map } = composer;
         let mut tasks = HashMap::new();
         for (path, config) in map {
@@ -131,22 +138,27 @@ impl From<RuskfileComposer> for HashMap<String, Task> {
                     depends,
                     cwd,
                 } = inner.try_into().unwrap(); // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
-                tasks.insert(
-                    name,
-                    Task {
-                        envs,
-                        script,
-                        cwd: if let Some(cwd) = cwd {
-                            configfile_dir.join(cwd)
-                        } else {
-                            configfile_dir.to_path_buf()
-                        },
-                        depends,
-                    },
-                );
+                let entry = tasks.entry(name.clone());
+                match entry {
+                    Entry::Occupied(_) => {
+                        return Err(RuskfileConvertError::DuplicatedTaskName(name));
+                    }
+                    Entry::Vacant(e) => {
+                        e.insert(Task {
+                            envs,
+                            script,
+                            cwd: if let Some(cwd) = cwd {
+                                configfile_dir.join(cwd)
+                            } else {
+                                configfile_dir.to_path_buf()
+                            },
+                            depends,
+                        });
+                    }
+                }
             }
         }
-        tasks
+        Ok(tasks)
     }
 }
 

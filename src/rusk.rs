@@ -14,7 +14,7 @@ use tokio::sync::watch::Receiver;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
-    ruskfile::RuskfileComposer,
+    ruskfile::{RuskfileComposer, RuskfileConvertError},
 };
 
 /// Rusk error
@@ -54,11 +54,12 @@ pub struct Rusk {
     tasks: HashMap<String, Task>,
 }
 
-impl From<RuskfileComposer> for Rusk {
-    fn from(composer: RuskfileComposer) -> Self {
-        Rusk {
-            tasks: composer.into(),
-        }
+impl TryFrom<RuskfileComposer> for Rusk {
+    type Error = RuskfileConvertError;
+    fn try_from(value: RuskfileComposer) -> Result<Self, Self::Error> {
+        Ok(Rusk {
+            tasks: value.try_into()?,
+        })
     }
 }
 

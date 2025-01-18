@@ -32,12 +32,13 @@ async fn main() {
     {
         match e {
             RuskError::TaskFailed(e) => {
+                eprint!("{} ", "Abort:".bold().red());
                 eprintln!("{e}");
                 std::process::exit(e.exit_code);
             }
             e => {
-                eprint!("{}: ", "Error".bold().on_red());
-                eprintln!("{}", e.to_string().red().bold());
+                eprint!("{} ", "Error:".bold().red());
+                eprintln!("{e}");
                 std::process::exit(1);
             }
         }

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    ops::Deref,
+    ops::{AddAssign, Deref, DerefMut},
     rc::Rc,
 };
 
@@ -23,6 +23,43 @@ pub enum TreeNodeCreationError {
     CircularDependency(String),
 }
 
+/// To manage parents of a node. When the manager is dropped, it removes the parent from the set.
+struct ParentsManager<'a>(&'a mut HashSet<String>, Option<String>);
+
+impl<'a> From<&'a mut HashSet<String>> for ParentsManager<'a> {
+    fn from(val: &'a mut HashSet<String>) -> Self {
+        ParentsManager(val, None)
+    }
+}
+
+impl Deref for ParentsManager<'_> {
+    type Target = HashSet<String>;
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl DerefMut for ParentsManager<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0
+    }
+}
+
+impl Drop for ParentsManager<'_> {
+    fn drop(&mut self) {
+        if let Some(name) = self.1.take() {
+            self.0.remove(&name);
+        }
+    }
+}
+
+impl AddAssign<String> for ParentsManager<'_> {
+    fn add_assign(&mut self, rhs: String) {
+        self.0.insert(rhs.clone());
+        self.1 = Some(rhs);
+    }
+}
+
 impl<D: DigraphItem> TreeNode<D> {
     /// Create trees from a directed graph.
     pub fn new_vec(
@@ -37,18 +74,15 @@ impl<D: DigraphItem> TreeNode<D> {
             name: String,
             raw: D,
             list: &mut HashMap<String, RawOrNode<D>>,
-            parents: &HashSet<&str>,
+            parents: &mut HashSet<String>,
         ) -> Result<TreeNode<D>, TreeNodeCreationError> {
-            let parents = {
-                let mut parents = parents.clone();
-                parents.insert(&name);
-                parents
-            };
+            let mut parents: ParentsManager = parents.into();
+            parents += name.clone();
 
             let mut children = vec![];
             for dep_name in raw.children().iter() {
                 let dep_name = dep_name.as_ref();
-                if parents.contains(dep_name) || dep_name == name {
+                if parents.contains(dep_name) {
                     return Err(TreeNodeCreationError::CircularDependency(
                         dep_name.to_string(),
                     ));
@@ -60,7 +94,7 @@ impl<D: DigraphItem> TreeNode<D> {
                 match item {
                     RawOrNode::Raw(dep_item) => {
                         let node =
-                            Rc::new(convert(dep_name.to_string(), dep_item, list, &parents)?);
+                            Rc::new(convert(dep_name.to_string(), dep_item, list, &mut parents)?);
                         list.insert(dep_name.to_string(), RawOrNode::Node(node.clone()));
                         children.push(node);
                     }
@@ -86,7 +120,7 @@ impl<D: DigraphItem> TreeNode<D> {
                 return Err(TreeNodeCreationError::ItemNotFound(label));
             };
             if let RawOrNode::Raw(raw) = item {
-                let node = convert(label, raw, &mut hashmap, &Default::default())?;
+                let node = convert(label, raw, &mut hashmap, &mut HashSet::new())?;
                 roots.push(node);
             }
         }

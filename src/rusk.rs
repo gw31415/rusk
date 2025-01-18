@@ -159,10 +159,8 @@ fn make_executable(
     Ok(parsed_tasks)
 }
 
-async fn exec_all(
-    roots: impl IntoIterator<Item = TreeNode<TaskExecutable>>,
-) -> Result<(), TaskError> {
-    async fn exec_node(node: &TreeNode<TaskExecutable>) -> Result<(), TaskError> {
+async fn exec_all(roots: impl IntoIterator<Item = TreeNode<TaskExecutable>>) -> TaskResult {
+    async fn exec_node(node: &TreeNode<TaskExecutable>) -> TaskResult {
         let child_futures = node.children.iter().map(|child| exec_node(child));
         try_join_all(child_futures).await?;
         node.item.as_future().await
@@ -177,14 +175,14 @@ async fn exec_all(
 
 enum TaskExecutableState {
     Initialized(TaskExecutableInner),
-    Processing(Receiver<Option<Result<(), TaskError>>>),
-    Done(Result<(), TaskError>),
+    Processing(Receiver<Option<TaskResult>>),
+    Done(TaskResult),
 }
 
 struct TaskExecutable(RefCell<TaskExecutableState>);
 
 impl TaskExecutable {
-    pub async fn as_future(&self) -> Result<(), TaskError> {
+    pub async fn as_future(&self) -> TaskResult {
         let res = 'res: {
             'early_return: {
                 let mut rx = match &self.0.try_borrow().unwrap() as &TaskExecutableState {
@@ -239,7 +237,7 @@ impl From<TaskExecutableInner> for TaskExecutable {
 }
 
 impl IntoFuture for TaskExecutableInner {
-    type Output = Result<(), TaskError>;
+    type Output = TaskResult;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move {
@@ -294,9 +292,13 @@ pub enum TaskParseError {
     },
 }
 
+/// Task execution error
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("Task {task_name:?} execution failed with exit code {exit_code}")]
 pub struct TaskError {
     pub task_name: String,
     pub exit_code: i32,
 }
+
+/// Task result alias
+type TaskResult = Result<(), TaskError>;

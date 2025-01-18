@@ -19,7 +19,7 @@ use crate::rusk::Task;
 #[derive(Default)]
 pub struct RuskfileComposer {
     /// Map of rusk.toml files
-    pub map: HashMap<PathBuf, RuskfileDeserializer>,
+    map: HashMap<PathBuf, RuskfileDeserializer>,
 }
 
 /// Check if the filename is ruskfile
@@ -165,21 +165,21 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
 
 /// serde::Deserialize of Ruskfile File content
 #[derive(serde::Deserialize)]
-pub struct RuskfileDeserializer {
+struct RuskfileDeserializer {
     /// TaskDeserializers map
     #[serde(default)]
-    pub tasks: HashMap<String, TaskDeserializer>,
+    tasks: HashMap<String, TaskDeserializer>,
 }
 
 /// serde::Deserialize of Each rusk Task
 #[derive(serde::Deserialize)]
-pub struct TaskDeserializer {
+struct TaskDeserializer {
     /// Task Raw content
     #[serde(flatten)]
-    pub inner: Table,
+    inner: Table,
     /// Description for help
     #[serde(default)]
-    pub description: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

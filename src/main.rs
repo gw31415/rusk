@@ -10,13 +10,14 @@ mod ruskfile;
 
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = args().skip(1).collect();
+
     let mut composer = RuskfileComposer::new();
     composer
         .walkdir(
             std::env::current_dir().unwrap(), // TODO: Project root
         )
         .await;
-    let args: Vec<String> = args().skip(1).collect();
 
     if args.is_empty() {
         let mut stdout = BufWriter::new(std::io::stdout());

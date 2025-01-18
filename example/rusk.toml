@@ -1,8 +1,8 @@
 [tasks.all]
-script = "echo 'all done'"
 depends = ['single', 'async']
 
 [tasks.single]
+# depends = ['all'] # uncomment this line to see the error
 script = "echo 'single start' && sleep 1.5 && echo 'single done'"
 
 [tasks.async]
@@ -17,7 +17,7 @@ depends = ['subsub']
 script = '''
 echo 'sub1 start'
 sleep 2
-echo '1 done'
+echo 'sub1 done'
 '''
 
 [tasks.'sub2']
@@ -26,7 +26,7 @@ depends = ['subsub']
 script = '''
 echo 'sub2 start'
 sleep 1
-echo '2 done'
+echo 'sub2 done'
 '''
 
 [tasks.subsub]

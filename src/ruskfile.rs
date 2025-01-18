@@ -188,6 +188,7 @@ struct TaskDeserializerInner {
     #[serde(default)]
     envs: HashMap<String, String>,
     /// Script to be executed
+    #[serde(default)]
     script: Option<String>,
     /// Dependencies
     #[serde(default)]

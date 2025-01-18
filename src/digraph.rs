@@ -39,7 +39,7 @@ impl<D: DigraphItem> TreeNode<D> {
             };
             let mut children = vec![];
             for dep_name in item.children().iter() {
-                let dep_name = dep_name.deref();
+                let dep_name = dep_name.as_ref();
                 let child = if base.contains_key(dep_name) {
                     let node = Rc::new(convert(base, converted, dep_name.to_string())?);
                     converted.insert(dep_name.to_string(), (node.clone(), Default::default()));
@@ -73,5 +73,5 @@ impl<D: DigraphItem> TreeNode<D> {
 /// Vertex of a directed graph
 pub trait DigraphItem {
     /// Get children of the vertex
-    fn children(&self) -> impl Deref<Target = [impl Deref<Target = str>]>;
+    fn children(&self) -> impl Deref<Target = [impl AsRef<str>]>;
 }

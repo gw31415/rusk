@@ -270,7 +270,7 @@ impl IntoFuture for TaskExecutableInner {
 }
 
 impl DigraphItem for TaskExecutable {
-    fn children(&self) -> impl Deref<Target = [impl Deref<Target = str>]> {
+    fn children(&self) -> impl Deref<Target = [impl AsRef<str>]> {
         Ref::map::<[String], _>(self.0.borrow(), |state| match state {
             TaskExecutableState::Initialized(inner) => inner.depends.as_slice(),
             _ => panic!("TaskExecutable is already called"),

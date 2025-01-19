@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     hash::Hash,
     marker::PhantomData,
     ops::{Deref, DerefMut},
@@ -60,19 +61,19 @@ impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
     /// Create trees from a directed graph.
     pub fn new_vec(
         hashmap: HashMap<K, D>,
-        targets: impl IntoIterator<Item = K>,
+        targets: impl IntoIterator<Item: Borrow<K>>,
     ) -> Result<Vec<Self>, TreeNodeCreationError<K>> {
         enum RawOrNode<K: Hash + Eq + Clone, D: DigraphItem<K>> {
             Raw(D),
             Node(Rc<TreeNode<K, D>>),
         }
         fn convert<K: Hash + Eq + Clone, D: DigraphItem<K>>(
-            name: K,
+            name: &K,
             raw: D,
             list: &mut HashMap<K, RawOrNode<K, D>>,
             parents: &mut HashSet<K>,
         ) -> Result<TreeNode<K, D>, TreeNodeCreationError<K>> {
-            let mut parents = ParentsManager::new(parents, &name);
+            let mut parents = ParentsManager::new(parents, name);
 
             let mut children = vec![];
             for dep_name in raw.children().iter() {
@@ -86,8 +87,7 @@ impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
                     }
                     EntryRef::Occupied(occupied) => match occupied.remove() {
                         RawOrNode::Raw(dep_item) => {
-                            let node =
-                                Rc::new(convert(dep_name.clone(), dep_item, list, &mut parents)?);
+                            let node = Rc::new(convert(dep_name, dep_item, list, &mut parents)?);
                             list.insert(dep_name.clone(), RawOrNode::Node(node.clone()));
                             children.push(node);
                         }
@@ -111,8 +111,9 @@ impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
             .map(|(k, v)| (k, RawOrNode::Raw(v)))
             .collect::<HashMap<_, _>>();
         for label in targets {
-            let Some(item) = hashmap.remove(&label) else {
-                return Err(TreeNodeCreationError::ItemNotFound(label));
+            let label = label.borrow();
+            let Some(item) = hashmap.remove(label) else {
+                return Err(TreeNodeCreationError::ItemNotFound(label.clone()));
             };
             if let RawOrNode::Raw(raw) = item {
                 let node = convert(label, raw, &mut hashmap, &mut HashSet::new())?;

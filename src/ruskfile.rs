@@ -148,11 +148,7 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
                         e.insert(Task {
                             envs,
                             script,
-                            cwd: if let Some(cwd) = cwd {
-                                configfile_dir.join(cwd)
-                            } else {
-                                configfile_dir.to_path_buf()
-                            },
+                            cwd: configfile_dir.join(cwd),
                             depends,
                         });
                     }
@@ -195,5 +191,16 @@ struct TaskDeserializerInner {
     depends: Vec<String>,
     /// Working directory
     #[serde(default)]
-    cwd: Option<String>,
+    cwd: String,
+}
+
+impl Default for TaskDeserializerInner {
+    fn default() -> Self {
+        Self {
+            envs: Default::default(),
+            script: Default::default(),
+            depends: Default::default(),
+            cwd: ".".to_string(),
+        }
+    }
 }

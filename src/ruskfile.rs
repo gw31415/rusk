@@ -9,7 +9,7 @@ use std::{
 use anyhow::Error;
 use colored::Colorize;
 use futures::future::join_all;
-use hashbrown::{hash_map::Entry, HashMap};
+use hashbrown::{hash_map::EntryRef, HashMap};
 use ignore::WalkBuilder;
 use toml::Table;
 
@@ -139,12 +139,11 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
                     depends,
                     cwd,
                 } = inner.try_into().unwrap(); // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
-                let entry = tasks.entry(name.clone());
-                match entry {
-                    Entry::Occupied(_) => {
+                match tasks.entry_ref(&name) {
+                    EntryRef::Occupied(_) => {
                         return Err(RuskfileConvertError::DuplicatedTaskName(name));
                     }
-                    Entry::Vacant(e) => {
+                    EntryRef::Vacant(e) => {
                         e.insert(Task {
                             envs,
                             script,

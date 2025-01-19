@@ -1,6 +1,5 @@
 use std::{
     cell::{Ref, RefCell},
-    collections::HashMap,
     fmt::Debug,
     future::{Future, IntoFuture},
     ops::Deref,
@@ -10,6 +9,7 @@ use std::{
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
+use hashbrown::HashMap;
 use tokio::sync::watch::Receiver;
 
 use crate::{
@@ -227,7 +227,7 @@ impl TaskExecutable {
 struct TaskExecutableInner {
     io: IOSet,
     task_name: String,
-    envs: HashMap<String, String>,
+    envs: std::collections::HashMap<String, String>,
     script: SequentialList,
     cwd: PathBuf,
     depends: Vec<String>,

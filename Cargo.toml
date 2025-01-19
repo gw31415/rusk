@@ -13,3 +13,4 @@ serde = { version = "1.0.217", features = ["derive"] }
 ignore = "0.4.23"
 toml = "0.8.19"
 colored = "3.0.0"
+hashbrown = { version = "0.15.2", features = ["serde"] }

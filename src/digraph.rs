@@ -1,10 +1,11 @@
 use std::{
-    collections::{HashMap, HashSet},
     hash::Hash,
     marker::PhantomData,
-    ops::{AddAssign, Deref, DerefMut},
+    ops::{Deref, DerefMut},
     rc::Rc,
 };
+
+use hashbrown::{hash_map::EntryRef, HashMap, HashSet};
 
 /// Node of a tree
 pub struct TreeNode<K: Hash + Eq + Clone, T> {
@@ -27,11 +28,12 @@ pub enum TreeNodeCreationError<K: Hash + Eq + Clone> {
 }
 
 /// To manage parents of a node. When the manager is dropped, it removes the parent from the set.
-struct ParentsManager<'a, K: Hash + Eq + Clone>(&'a mut HashSet<K>, Option<K>);
+struct ParentsManager<'a, K: Hash + Eq + Clone>(&'a mut HashSet<K>, &'a K);
 
-impl<'a, K: Hash + Eq + Clone> From<&'a mut HashSet<K>> for ParentsManager<'a, K> {
-    fn from(val: &'a mut HashSet<K>) -> Self {
-        ParentsManager(val, None)
+impl<'a, K: Hash + Eq + Clone> ParentsManager<'a, K> {
+    fn new(parents: &'a mut HashSet<K>, name: &'a K) -> Self {
+        parents.insert(name.clone());
+        Self(parents, name)
     }
 }
 
@@ -50,16 +52,7 @@ impl<'a, K: Hash + Eq + Clone> DerefMut for ParentsManager<'a, K> {
 
 impl<'a, K: Hash + Eq + Clone> Drop for ParentsManager<'a, K> {
     fn drop(&mut self) {
-        if let Some(name) = self.1.take() {
-            self.0.remove(&name);
-        }
-    }
-}
-
-impl<'a, K: Hash + Eq + Clone> AddAssign<K> for ParentsManager<'a, K> {
-    fn add_assign(&mut self, rhs: K) {
-        self.0.insert(rhs.clone());
-        self.1 = Some(rhs);
+        self.0.remove(self.1);
     }
 }
 
@@ -79,8 +72,7 @@ impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
             list: &mut HashMap<K, RawOrNode<K, D>>,
             parents: &mut HashSet<K>,
         ) -> Result<TreeNode<K, D>, TreeNodeCreationError<K>> {
-            let mut parents: ParentsManager<K> = parents.into();
-            parents += name.clone();
+            let mut parents = ParentsManager::new(parents, &name);
 
             let mut children = vec![];
             for dep_name in raw.children().iter() {
@@ -88,20 +80,22 @@ impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
                     return Err(TreeNodeCreationError::CircularDependency(dep_name.clone()));
                 }
 
-                let Some(item) = list.remove(dep_name) else {
-                    return Err(TreeNodeCreationError::ItemNotFound(dep_name.clone()));
-                };
-                match item {
-                    RawOrNode::Raw(dep_item) => {
-                        let node =
-                            Rc::new(convert(dep_name.clone(), dep_item, list, &mut parents)?);
-                        list.insert(dep_name.clone(), RawOrNode::Node(node.clone()));
-                        children.push(node);
+                match list.entry_ref(dep_name) {
+                    EntryRef::Vacant(_) => {
+                        return Err(TreeNodeCreationError::ItemNotFound(dep_name.clone()));
                     }
-                    RawOrNode::Node(dep_node) => {
-                        list.insert(dep_name.clone(), RawOrNode::Node(dep_node.clone()));
-                        children.push(dep_node);
-                    }
+                    EntryRef::Occupied(occupied) => match occupied.remove() {
+                        RawOrNode::Raw(dep_item) => {
+                            let node =
+                                Rc::new(convert(dep_name.clone(), dep_item, list, &mut parents)?);
+                            list.insert(dep_name.clone(), RawOrNode::Node(node.clone()));
+                            children.push(node);
+                        }
+                        RawOrNode::Node(dep_node) => {
+                            list.insert(dep_name.clone(), RawOrNode::Node(dep_node.clone()));
+                            children.push(dep_node);
+                        }
+                    },
                 }
             }
             Ok(TreeNode::<K, D> {

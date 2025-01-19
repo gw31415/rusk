@@ -1,5 +1,4 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
     fmt::Display,
     fs::File,
     io,
@@ -10,6 +9,7 @@ use std::{
 use anyhow::Error;
 use colored::Colorize;
 use futures::future::join_all;
+use hashbrown::{hash_map::Entry, HashMap};
 use ignore::WalkBuilder;
 use toml::Table;
 

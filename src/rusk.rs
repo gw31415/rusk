@@ -73,8 +73,8 @@ impl Rusk {
         opts: ExecuteOpts,
     ) -> Result<(), RuskError> {
         let Rusk { tasks } = self;
-        let executables = make_executable(tasks, opts)?;
-        let graph = TreeNode::new_vec(executables, tasknames)?;
+        let tasks = into_executable(tasks, opts)?;
+        let graph = TreeNode::new_vec(tasks, tasknames)?;
         exec_all(graph).await?;
         Ok(())
     }
@@ -109,7 +109,8 @@ impl Default for ExecuteOpts {
     }
 }
 
-fn make_executable(
+/// Alternative for `TryInto<HashMap<_, TaskExecutable>>` for `HashMap<_, Task>`
+fn into_executable(
     tasks: HashMap<String, Task>,
     ExecuteOpts {
         envs: global_env,

@@ -1,51 +1,54 @@
 use std::{
     collections::{HashMap, HashSet},
+    hash::Hash,
+    marker::PhantomData,
     ops::{AddAssign, Deref, DerefMut},
     rc::Rc,
 };
 
 /// Node of a tree
-pub struct TreeNode<T> {
+pub struct TreeNode<K: Hash + Eq + Clone, T> {
+    _key: PhantomData<fn() -> K>,
     /// Inner-Item of the node
     pub item: T,
     /// Children of the node
-    pub children: Vec<Rc<TreeNode<T>>>,
+    pub children: Vec<Rc<TreeNode<K, T>>>,
 }
 
 /// Error of TreeNode
 #[derive(Debug, thiserror::Error)]
-pub enum TreeNodeCreationError {
+pub enum TreeNodeCreationError<K: Hash + Eq + Clone> {
     /// Item not found
     #[error("Item named {0:?} not found")]
-    ItemNotFound(String),
+    ItemNotFound(K),
     /// Circular dependency found
     #[error("Circular dependency found around {0:?}")]
-    CircularDependency(String),
+    CircularDependency(K),
 }
 
 /// To manage parents of a node. When the manager is dropped, it removes the parent from the set.
-struct ParentsManager<'a>(&'a mut HashSet<String>, Option<String>);
+struct ParentsManager<'a, K: Hash + Eq + Clone>(&'a mut HashSet<K>, Option<K>);
 
-impl<'a> From<&'a mut HashSet<String>> for ParentsManager<'a> {
-    fn from(val: &'a mut HashSet<String>) -> Self {
+impl<'a, K: Hash + Eq + Clone> From<&'a mut HashSet<K>> for ParentsManager<'a, K> {
+    fn from(val: &'a mut HashSet<K>) -> Self {
         ParentsManager(val, None)
     }
 }
 
-impl Deref for ParentsManager<'_> {
-    type Target = HashSet<String>;
+impl<'a, K: Hash + Eq + Clone> Deref for ParentsManager<'a, K> {
+    type Target = HashSet<K>;
     fn deref(&self) -> &Self::Target {
         self.0
     }
 }
 
-impl DerefMut for ParentsManager<'_> {
+impl<'a, K: Hash + Eq + Clone> DerefMut for ParentsManager<'a, K> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0
     }
 }
 
-impl Drop for ParentsManager<'_> {
+impl<'a, K: Hash + Eq + Clone> Drop for ParentsManager<'a, K> {
     fn drop(&mut self) {
         if let Some(name) = self.1.take() {
             self.0.remove(&name);
@@ -53,58 +56,56 @@ impl Drop for ParentsManager<'_> {
     }
 }
 
-impl AddAssign<String> for ParentsManager<'_> {
-    fn add_assign(&mut self, rhs: String) {
+impl<'a, K: Hash + Eq + Clone> AddAssign<K> for ParentsManager<'a, K> {
+    fn add_assign(&mut self, rhs: K) {
         self.0.insert(rhs.clone());
         self.1 = Some(rhs);
     }
 }
 
-impl<D: DigraphItem> TreeNode<D> {
+impl<K: Hash + Eq + Clone, D: DigraphItem<K>> TreeNode<K, D> {
     /// Create trees from a directed graph.
     pub fn new_vec(
-        hashmap: HashMap<String, D>,
-        targets: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<Self>, TreeNodeCreationError> {
-        enum RawOrNode<D> {
+        hashmap: HashMap<K, D>,
+        targets: impl IntoIterator<Item = K>,
+    ) -> Result<Vec<Self>, TreeNodeCreationError<K>> {
+        enum RawOrNode<K: Hash + Eq + Clone, D: DigraphItem<K>> {
             Raw(D),
-            Node(Rc<TreeNode<D>>),
+            Node(Rc<TreeNode<K, D>>),
         }
-        fn convert<D: DigraphItem>(
-            name: String,
+        fn convert<K: Hash + Eq + Clone, D: DigraphItem<K>>(
+            name: K,
             raw: D,
-            list: &mut HashMap<String, RawOrNode<D>>,
-            parents: &mut HashSet<String>,
-        ) -> Result<TreeNode<D>, TreeNodeCreationError> {
-            let mut parents: ParentsManager = parents.into();
+            list: &mut HashMap<K, RawOrNode<K, D>>,
+            parents: &mut HashSet<K>,
+        ) -> Result<TreeNode<K, D>, TreeNodeCreationError<K>> {
+            let mut parents: ParentsManager<K> = parents.into();
             parents += name.clone();
 
             let mut children = vec![];
             for dep_name in raw.children().iter() {
-                let dep_name = dep_name.as_ref();
                 if parents.contains(dep_name) {
-                    return Err(TreeNodeCreationError::CircularDependency(
-                        dep_name.to_string(),
-                    ));
+                    return Err(TreeNodeCreationError::CircularDependency(dep_name.clone()));
                 }
 
                 let Some(item) = list.remove(dep_name) else {
-                    return Err(TreeNodeCreationError::ItemNotFound(dep_name.to_string()));
+                    return Err(TreeNodeCreationError::ItemNotFound(dep_name.clone()));
                 };
                 match item {
                     RawOrNode::Raw(dep_item) => {
                         let node =
-                            Rc::new(convert(dep_name.to_string(), dep_item, list, &mut parents)?);
-                        list.insert(dep_name.to_string(), RawOrNode::Node(node.clone()));
+                            Rc::new(convert(dep_name.clone(), dep_item, list, &mut parents)?);
+                        list.insert(dep_name.clone(), RawOrNode::Node(node.clone()));
                         children.push(node);
                     }
                     RawOrNode::Node(dep_node) => {
-                        list.insert(dep_name.to_string(), RawOrNode::Node(dep_node.clone()));
+                        list.insert(dep_name.clone(), RawOrNode::Node(dep_node.clone()));
                         children.push(dep_node);
                     }
                 }
             }
-            Ok(TreeNode::<D> {
+            Ok(TreeNode::<K, D> {
+                _key: PhantomData,
                 item: raw,
                 children,
             })
@@ -129,7 +130,7 @@ impl<D: DigraphItem> TreeNode<D> {
 }
 
 /// Vertex of a directed graph
-pub trait DigraphItem {
+pub trait DigraphItem<K: Hash + Eq + Clone> {
     /// Get children of the vertex
-    fn children(&self) -> impl Deref<Target = [impl AsRef<str>]>;
+    fn children(&self) -> impl Deref<Target = [K]>;
 }

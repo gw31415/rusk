@@ -17,12 +17,14 @@ use crate::{
     ruskfile::{RuskfileComposer, RuskfileConvertError},
 };
 
+type TaskTree = TreeNode<String, TaskExecutable>;
+
 /// Rusk error
 #[derive(Debug, thiserror::Error)]
 pub enum RuskError {
     /// TreeNode creation error
     #[error(transparent)]
-    TreeNodeBroken(#[from] TreeNodeCreationError),
+    TreeNodeBroken(#[from] TreeNodeCreationError<String>),
     /// Task parsing error
     #[error(transparent)]
     TaskUnparsable(#[from] TaskParseError),
@@ -160,8 +162,8 @@ fn make_executable(
     Ok(parsed_tasks)
 }
 
-async fn exec_all(roots: impl IntoIterator<Item = TreeNode<TaskExecutable>>) -> TaskResult {
-    async fn exec_node(node: &TreeNode<TaskExecutable>) -> TaskResult {
+async fn exec_all(roots: impl IntoIterator<Item = TaskTree>) -> TaskResult {
+    async fn exec_node(node: &TaskTree) -> TaskResult {
         let child_futures = node.children.iter().map(|child| exec_node(child));
         try_join_all(child_futures).await?;
         node.item.as_future().await
@@ -270,8 +272,8 @@ impl IntoFuture for TaskExecutableInner {
     }
 }
 
-impl DigraphItem for TaskExecutable {
-    fn children(&self) -> impl Deref<Target = [impl AsRef<str>]> {
+impl DigraphItem<String> for TaskExecutable {
+    fn children(&self) -> impl Deref<Target = [String]> {
         Ref::map::<[String], _>(self.0.borrow(), |state| match state {
             TaskExecutableState::Initialized(inner) => inner.depends.as_slice(),
             _ => panic!("TaskExecutable is already called"),

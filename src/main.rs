@@ -5,6 +5,7 @@ use std::{
 
 use colored::Colorize;
 use itertools::Itertools;
+use path::get_current_dir;
 use rusk::{Rusk, RuskError};
 use ruskfile::RuskfileComposer;
 
@@ -19,9 +20,7 @@ async fn main() {
 
     let mut composer = RuskfileComposer::new();
     composer
-        .walkdir(
-            std::env::current_dir().unwrap(), // TODO: Project root
-        )
+        .walkdir(get_current_dir().to_path_buf()) // TODO: Project root
         .await;
 
     if args.is_empty() {

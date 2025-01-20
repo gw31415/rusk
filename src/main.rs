@@ -1,7 +1,4 @@
-use std::{
-    env::args,
-    io::{BufWriter, Write},
-};
+use std::io::{BufWriter, Write};
 
 use colored::Colorize;
 use itertools::Itertools;
@@ -14,16 +11,54 @@ mod path;
 mod rusk;
 mod ruskfile;
 
+mod args {
+    use std::env;
+
+    pub struct Args {
+        inner: env::Args,
+        first: Option<String>,
+        first_read: bool,
+    }
+
+    impl Args {
+        pub fn new() -> Self {
+            let mut inner = env::args();
+            inner.next(); // Skip the first argument
+            let first = inner.next();
+            Self {
+                inner,
+                first,
+                first_read: false,
+            }
+        }
+        pub fn was_empty(&self) -> bool {
+            !self.first_read && self.first.is_none()
+        }
+    }
+
+    impl Iterator for Args {
+        type Item = String;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if !self.first_read {
+                self.first_read = true;
+                return self.first.take();
+            }
+            self.inner.next()
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = args().skip(1).collect();
+    let args = args::Args::new();
 
     let mut composer = RuskfileComposer::new();
     composer
         .walkdir(get_current_dir()) // TODO: Project root
         .await;
 
-    if args.is_empty() {
+    if args.was_empty() {
         let stdout = std::io::stdout();
         let mut stdout = BufWriter::new(stdout);
 

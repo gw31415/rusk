@@ -36,6 +36,45 @@ pub struct TasksListItem<'a> {
     path: &'a Path,
 }
 
+impl TasksListItem<'_> {
+    /// Write verbose error
+    pub fn verbose(&self) -> impl Display + '_ {
+        if self.content.is_ok() {
+            panic!("TasksListItem::verbose() is not for Ok variant");
+        }
+        TaskErrorVerboseDisplay(self)
+    }
+}
+
+/// Struct which implements Display to show error verbose
+struct TaskErrorVerboseDisplay<'a>(&'a TasksListItem<'a>);
+
+impl Display for TaskErrorVerboseDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(inner) = self;
+        match inner.content {
+            Err(err) => {
+                writeln!(
+                    f,
+                    "{}:",
+                    inner
+                        .path
+                        .to_string_lossy()
+                        .yellow()
+                        .bold()
+                        .italic()
+                        .underline(),
+                )?;
+                for line in err.lines() {
+                    writeln!(f, "\t{}", line)?;
+                }
+            }
+            _ => unimplemented!(),
+        };
+        Ok(())
+    }
+}
+
 impl Ord for TasksListItem<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let cmp = self.content.cmp(&other.content);

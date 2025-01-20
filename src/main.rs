@@ -1,6 +1,10 @@
-use std::{env::args, io::BufWriter, io::Write};
+use std::{
+    env::args,
+    io::{BufWriter, Write},
+};
 
 use colored::Colorize;
+use itertools::Itertools;
 use rusk::{Rusk, RuskError};
 use ruskfile::RuskfileComposer;
 
@@ -20,10 +24,20 @@ async fn main() {
         .await;
 
     if args.is_empty() {
-        let mut stdout = BufWriter::new(std::io::stdout());
-        for task in composer.tasks_list() {
+        let stdout = std::io::stdout();
+        let mut stdout = BufWriter::new(stdout);
+
+        for task in composer.tasks_list().sorted() {
             writeln!(stdout, "{}", task).unwrap();
         }
+        stdout.flush().unwrap();
+
+        let stderr = std::io::stderr();
+        let mut stderr = BufWriter::new(stderr);
+        for err in composer.errors_list().sorted() {
+            writeln!(stderr, "\n{}", err.verbose()).unwrap();
+        }
+        stderr.flush().unwrap();
         return;
     }
 

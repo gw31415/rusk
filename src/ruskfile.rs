@@ -17,7 +17,7 @@ use crate::rusk::Task;
 #[derive(Default)]
 pub struct RuskfileComposer {
     /// Map of rusk.toml files
-    map: HashMap<PathBuf, Result<RuskfileDeserializer, Error>>,
+    map: HashMap<PathBuf, Result<RuskfileDeserializer, String>>,
 }
 
 /// Check if the filename is ruskfile
@@ -28,18 +28,37 @@ macro_rules! is_ruskfile {
 }
 
 /// Item of tasks_list
+#[derive(PartialEq, Eq, PartialOrd)]
 pub struct TasksListItem<'a> {
     /// Task content
-    content: Result<TaskListItemContent<'a>, &'a Error>,
+    content: Result<TaskListItemContent<'a>, &'a str>,
     /// Path to rusk.toml
     path: &'a Path,
 }
 
+impl Ord for TasksListItem<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let cmp = self.content.cmp(&other.content);
+        if let std::cmp::Ordering::Equal = cmp {
+            self.path.cmp(other.path)
+        } else {
+            cmp
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd)]
 struct TaskListItemContent<'a> {
     /// Task name
     name: &'a str,
     /// Task description
     description: Option<&'a str>,
+}
+
+impl Ord for TaskListItemContent<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(other.name)
+    }
 }
 
 impl Display for TasksListItem<'_> {
@@ -123,7 +142,8 @@ impl RuskfileComposer {
                                                 .and_then(|content| {
                                                     toml::from_str::<RuskfileDeserializer>(&content)
                                                         .map_err(Error::from)
-                                                });
+                                                })
+                                                .map_err(|err| err.to_string());
                                             (path, res)
                                         }
                                     });

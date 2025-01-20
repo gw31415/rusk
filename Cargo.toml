@@ -17,3 +17,4 @@ colored = "3.0.0"
 hashbrown = { version = "0.15.2", features = ["serde"] }
 itertools = "0.14.0"
 path-dedot = "3.1.1"
+pathdiff = "0.2.3"

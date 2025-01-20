@@ -9,6 +9,7 @@ use rusk::{Rusk, RuskError};
 use ruskfile::RuskfileComposer;
 
 mod digraph;
+mod path;
 mod rusk;
 mod ruskfile;
 

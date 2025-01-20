@@ -3,29 +3,30 @@ use std::{
     fmt::Debug,
     future::{Future, IntoFuture},
     ops::Deref,
-    path::PathBuf,
     pin::Pin,
 };
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
 use hashbrown::HashMap;
-use path_dedot::ParseDot;
 use tokio::sync::watch::Receiver;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
+    path::NormarizedPath,
     ruskfile::{RuskfileComposer, RuskfileConvertError},
 };
 
-type TaskTree = TreeNode<String, TaskExecutable>;
+type TaskKey = String;
+
+type TaskTree = TreeNode<TaskKey, TaskExecutable>;
 
 /// Rusk error
 #[derive(Debug, thiserror::Error)]
 pub enum RuskError {
     /// TreeNode creation error
     #[error(transparent)]
-    TreeNodeBroken(#[from] TreeNodeCreationError<String>),
+    TreeNodeBroken(#[from] TreeNodeCreationError<TaskKey>),
     /// Task parsing error
     #[error(transparent)]
     TaskUnparsable(#[from] TaskParseError),
@@ -54,7 +55,7 @@ impl Default for IOSet {
 /// Rusk configuration
 pub struct Rusk {
     /// Tasks to be executed
-    tasks: HashMap<String, Task>,
+    tasks: HashMap<TaskKey, Task>,
 }
 
 impl TryFrom<RuskfileComposer> for Rusk {
@@ -88,7 +89,7 @@ pub struct Task {
     /// Script to be executed
     pub script: Option<String>,
     /// Working directory
-    pub cwd: PathBuf,
+    pub cwd: NormarizedPath,
     /// Dependencies
     pub depends: Vec<String>,
 }
@@ -112,13 +113,13 @@ impl Default for ExecuteOpts {
 
 /// Alternative for `TryInto<HashMap<_, TaskExecutable>>` for `HashMap<_, Task>`
 fn into_executable(
-    tasks: HashMap<String, Task>,
+    tasks: HashMap<TaskKey, Task>,
     ExecuteOpts {
         envs: global_env,
         io,
     }: ExecuteOpts,
-) -> Result<HashMap<String, TaskExecutable>, TaskParseError> {
-    let mut parsed_tasks: HashMap<String, TaskExecutable> = HashMap::new();
+) -> Result<HashMap<TaskKey, TaskExecutable>, TaskParseError> {
+    let mut parsed_tasks: HashMap<TaskKey, TaskExecutable> = HashMap::new();
 
     for (task_name, task) in tasks {
         let script = {
@@ -140,13 +141,6 @@ fn into_executable(
             envs, cwd, depends, ..
         } = task;
 
-        let Ok(cwd) = || -> std::io::Result<PathBuf> {
-            let cwd = cwd.parse_dot()?;
-            let cwd = std::path::absolute(cwd)?;
-            Ok(cwd)
-        }() else {
-            return Err(TaskParseError::PathNormalizationError(cwd));
-        };
         if !cwd.is_dir() {
             return Err(TaskParseError::DirectoryNotFound(cwd));
         }
@@ -232,11 +226,11 @@ impl TaskExecutable {
 
 struct TaskExecutableInner {
     io: IOSet,
-    task_name: String,
+    task_name: TaskKey,
     envs: std::collections::HashMap<String, String>,
     script: SequentialList,
-    cwd: PathBuf,
-    depends: Vec<String>,
+    cwd: NormarizedPath,
+    depends: Vec<TaskKey>, // 依存関係の検索についてはTaskKeyを用いるか検討が必要
 }
 
 impl From<TaskExecutableInner> for TaskExecutable {
@@ -278,9 +272,9 @@ impl IntoFuture for TaskExecutableInner {
     }
 }
 
-impl DigraphItem<String> for TaskExecutable {
-    fn children(&self) -> impl Deref<Target = [String]> {
-        Ref::map::<[String], _>(self.0.borrow(), |state| match state {
+impl DigraphItem<TaskKey> for TaskExecutable {
+    fn children(&self) -> impl Deref<Target = [TaskKey]> {
+        Ref::map::<[TaskKey], _>(self.0.borrow(), |state| match state {
             TaskExecutableState::Initialized(inner) => inner.depends.as_slice(),
             _ => panic!("TaskExecutable is already called"),
         })
@@ -290,16 +284,13 @@ impl DigraphItem<String> for TaskExecutable {
 /// Task parsing error
 #[derive(Debug, thiserror::Error)]
 pub enum TaskParseError {
-    /// Failed to normalize path
-    #[error("Failed to normalize path: {0:?}")]
-    PathNormalizationError(PathBuf),
     /// Directory not found
-    #[error("Directory not found: {0:?}")]
-    DirectoryNotFound(PathBuf),
+    #[error("Directory not found: {0}")]
+    DirectoryNotFound(NormarizedPath),
     /// Task script parse error
     #[error("Task {task_name:?} script parse error: {error:?}")]
     ScriptParseError {
-        task_name: String,
+        task_name: TaskKey,
         error: anyhow::Error,
     },
 }
@@ -308,7 +299,7 @@ pub enum TaskParseError {
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("Task {task_name:?} failed with exit code {exit_code}")]
 pub struct TaskError {
-    pub task_name: String,
+    pub task_name: TaskKey,
     pub exit_code: i32,
 }
 

@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -11,13 +11,16 @@ use hashbrown::{hash_map::EntryRef, HashMap};
 use ignore::{WalkBuilder, WalkState};
 use toml::Table;
 
-use crate::rusk::Task;
+use crate::{
+    path::{get_current_dir, NormarizedPath},
+    rusk::Task,
+};
 
 /// Configuration files
 #[derive(Default)]
 pub struct RuskfileComposer {
     /// Map of rusk.toml files
-    map: HashMap<PathBuf, Result<RuskfileDeserializer, String>>,
+    map: HashMap<NormarizedPath, Result<RuskfileDeserializer, String>>,
 }
 
 /// Check if the filename is ruskfile
@@ -33,7 +36,7 @@ pub struct TasksListItem<'a> {
     /// Task content
     content: Result<TaskListItemContent<'a>, &'a str>,
     /// Path to rusk.toml
-    path: &'a Path,
+    path: &'a NormarizedPath,
 }
 
 impl TasksListItem<'_> {
@@ -57,9 +60,7 @@ impl Display for TaskErrorVerboseDisplay<'_> {
                 writeln!(
                     f,
                     "{}:",
-                    inner
-                        .path
-                        .to_string_lossy()
+                    (inner.path - get_current_dir())
                         .yellow()
                         .bold()
                         .italic()
@@ -117,7 +118,7 @@ impl Display for TasksListItem<'_> {
             f,
             "{} {}",
             "in".dimmed().italic(),
-            self.path.to_string_lossy().yellow().dimmed().italic(),
+            (self.path - get_current_dir()).yellow().dimmed().italic(),
         )
     }
 }
@@ -183,7 +184,7 @@ impl RuskfileComposer {
                                                         .map_err(Error::from)
                                                 })
                                                 .map_err(|err| err.to_string());
-                                            (path, res)
+                                            (path.into(), res)
                                         }
                                     });
                                 }
@@ -199,7 +200,7 @@ impl RuskfileComposer {
                 .into_inner()
                 .unwrap()
         };
-        let map: HashMap<PathBuf, _> = join_all(loading_confs).await.into_iter().collect();
+        let map: HashMap<NormarizedPath, _> = join_all(loading_confs).await.into_iter().collect();
         self.map.extend(map);
     }
 }
@@ -219,7 +220,7 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
             let Ok(config) = res else {
                 continue;
             };
-            let configfile_dir = path.parent().unwrap();
+            let configfile_dir = path.parent().unwrap(); // NOTE: path is guaranteed to be a NormalizedPath of an existing file, so it should have a parent directory
             for (name, TaskDeserializer { inner, .. }) in config.tasks {
                 let TaskDeserializerInner {
                     envs,
@@ -235,7 +236,7 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
                         e.insert(Task {
                             envs,
                             script,
-                            cwd: configfile_dir.join(cwd),
+                            cwd: configfile_dir.join(cwd).into(),
                             depends,
                         });
                     }

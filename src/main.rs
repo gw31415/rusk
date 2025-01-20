@@ -20,7 +20,7 @@ async fn main() {
 
     let mut composer = RuskfileComposer::new();
     composer
-        .walkdir(get_current_dir().to_path_buf()) // TODO: Project root
+        .walkdir(get_current_dir()) // TODO: Project root
         .await;
 
     if args.is_empty() {

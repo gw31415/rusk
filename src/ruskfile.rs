@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    path::PathBuf,
+    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -151,7 +151,7 @@ impl RuskfileComposer {
     }
 
     /// Walk through the directory and find all rusk.toml files
-    pub async fn walkdir(&mut self, path: PathBuf) {
+    pub async fn walkdir(&mut self, path: impl AsRef<Path>) {
         let loading_confs = {
             let futures_collect: Arc<Mutex<Vec<_>>> = Default::default();
             WalkBuilder::new(path)

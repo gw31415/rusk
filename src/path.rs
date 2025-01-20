@@ -44,11 +44,16 @@ impl NormarizedPath {
     pub fn as_rel_str(&self) -> &str {
         if let Some(rel) = &self.rel {
             rel.get_or_init(|| {
-                pathdiff::diff_paths(self.as_abs_str(), get_current_dir().as_abs_str())
+                let rel = pathdiff::diff_paths(self.as_abs_str(), get_current_dir().as_abs_str())
                     .expect(NORM_PATH_ERR)
                     .into_os_string()
                     .into_string()
-                    .expect(NORM_PATH_ERR)
+                    .expect(NORM_PATH_ERR);
+                if rel.is_empty() {
+                    ".".to_string()
+                } else {
+                    rel
+                }
             })
         } else {
             "."

@@ -520,6 +520,7 @@ dependencies = [
  "hashbrown",
  "ignore",
  "itertools",
+ "once_cell",
  "path-dedot",
  "pathdiff",
  "serde",

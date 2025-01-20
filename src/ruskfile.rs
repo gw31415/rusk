@@ -11,10 +11,7 @@ use hashbrown::{hash_map::EntryRef, HashMap};
 use ignore::{WalkBuilder, WalkState};
 use toml::Table;
 
-use crate::{
-    path::{get_current_dir, NormarizedPath},
-    rusk::Task,
-};
+use crate::{path::NormarizedPath, rusk::Task};
 
 /// Configuration files
 #[derive(Default)]
@@ -60,11 +57,7 @@ impl Display for TaskErrorVerboseDisplay<'_> {
                 writeln!(
                     f,
                     "{}:",
-                    (inner.path - get_current_dir())
-                        .yellow()
-                        .bold()
-                        .italic()
-                        .underline(),
+                    inner.path.as_rel_str().yellow().bold().italic().underline(),
                 )?;
                 for line in err.lines() {
                     writeln!(f, "\t{}", line)?;
@@ -118,7 +111,7 @@ impl Display for TasksListItem<'_> {
             f,
             "{} {}",
             "in".dimmed().italic(),
-            (self.path - get_current_dir()).yellow().dimmed().italic(),
+            self.path.as_rel_str().yellow().dimmed().italic(),
         )
     }
 }

@@ -1,7 +1,5 @@
 use std::{
     fmt::Display,
-    fs::File,
-    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -10,7 +8,7 @@ use anyhow::Error;
 use colored::Colorize;
 use futures::future::join_all;
 use hashbrown::{hash_map::EntryRef, HashMap};
-use ignore::WalkBuilder;
+use ignore::{WalkBuilder, WalkState};
 use toml::Table;
 
 use crate::rusk::Task;
@@ -86,26 +84,23 @@ impl RuskfileComposer {
                                 if ft.is_file()
                                     && is_ruskfile!(entry.file_name().to_str().unwrap_or(""))
                                 {
+                                    let path = entry.path().to_path_buf();
                                     configfiles.lock().unwrap().push({
-                                        let path = entry.path().to_path_buf();
                                         // make Future of Config
                                         async {
-                                            (|| -> Result<_, Error> {
-                                                // Read file & deserialize into Config
-                                                let content_str =
-                                                    io::read_to_string(File::open(&path)?)?;
-                                                let content: RuskfileDeserializer =
-                                                    toml::from_str(&content_str)?;
-                                                Ok((path, content))
-                                            })()
-                                            .ok()
+                                            // Read file & deserialize into Config
+                                            let content_str =
+                                                tokio::fs::read_to_string(&path).await?;
+                                            let content: RuskfileDeserializer =
+                                                toml::from_str(&content_str)?;
+                                            Ok::<_, Error>((path, content))
                                         }
                                     });
                                 }
-                                return ignore::WalkState::Continue;
+                                return WalkState::Continue;
                             }
                         }
-                        ignore::WalkState::Skip
+                        WalkState::Skip
                     })
                 });
             Arc::try_unwrap(configfiles)
@@ -114,7 +109,8 @@ impl RuskfileComposer {
                 .into_inner()
                 .unwrap()
         };
-        let map: HashMap<_, _> = join_all(configfiles).await.into_iter().flatten().collect();
+        let map: HashMap<PathBuf, RuskfileDeserializer> =
+            join_all(configfiles).await.into_iter().flatten().collect();
         self.map.extend(map);
     }
 }

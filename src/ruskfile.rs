@@ -17,7 +17,7 @@ use crate::rusk::Task;
 #[derive(Default)]
 pub struct RuskfileComposer {
     /// Map of rusk.toml files
-    map: HashMap<PathBuf, RuskfileDeserializer>,
+    map: HashMap<PathBuf, Result<RuskfileDeserializer, Error>>,
 }
 
 /// Check if the filename is ruskfile
@@ -29,19 +29,31 @@ macro_rules! is_ruskfile {
 
 /// Item of tasks_list
 pub struct TasksListItem<'a> {
-    /// Task name
-    name: &'a str,
-    /// Task description
-    description: Option<&'a str>,
+    /// Task content
+    content: Result<TaskListItemContent<'a>, &'a Error>,
     /// Path to rusk.toml
     path: &'a Path,
 }
 
+struct TaskListItemContent<'a> {
+    /// Task name
+    name: &'a str,
+    /// Task description
+    description: Option<&'a str>,
+}
+
 impl Display for TasksListItem<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}\t", self.name)?;
-        if let Some(description) = &self.description {
-            write!(f, "{}\t", description.bold())?;
+        match self.content {
+            Ok(TaskListItemContent { name, description }) => {
+                write!(f, "{}\t", name)?;
+                if let Some(description) = description {
+                    write!(f, "{}\t", description.bold())?;
+                }
+            }
+            Err(_) => {
+                write!(f, "{}\t", "(null)".dimmed().italic())?;
+            }
         }
         write!(
             f,
@@ -61,14 +73,31 @@ impl RuskfileComposer {
     }
     /// List all tasks
     pub fn tasks_list(&self) -> impl Iterator<Item = TasksListItem<'_>> {
-        self.map.iter().flat_map(|(path, config)| {
-            config.tasks.iter().map(move |(name, task)| TasksListItem {
-                name,
-                description: task.description.as_deref(),
-                path,
+        self.map
+            .iter()
+            .filter_map(|(path, res)| match res {
+                Ok(config) => Some(config.tasks.iter().map(move |(name, task)| TasksListItem {
+                    content: Ok(TaskListItemContent {
+                        name,
+                        description: task.description.as_deref(),
+                    }),
+                    path,
+                })),
+                _ => None,
             })
+            .flatten()
+    }
+    /// List all errors
+    pub fn errors_list(&self) -> impl Iterator<Item = TasksListItem<'_>> {
+        self.map.iter().filter_map(|(path, res)| match res {
+            Err(err) => Some(TasksListItem {
+                content: Err(err),
+                path,
+            }),
+            _ => None,
         })
     }
+
     /// Walk through the directory and find all rusk.toml files
     pub async fn walkdir(&mut self, path: PathBuf) {
         let loading_confs = {
@@ -87,13 +116,15 @@ impl RuskfileComposer {
                                     let path = entry.path().to_path_buf();
                                     futures_collect.lock().unwrap().push({
                                         // make Future of Config
-                                        async {
-                                            // Read file & deserialize into Config
-                                            let content_str =
-                                                tokio::fs::read_to_string(&path).await?;
-                                            let content: RuskfileDeserializer =
-                                                toml::from_str(&content_str)?;
-                                            Ok::<_, Error>((path, content))
+                                        async move {
+                                            let res = tokio::fs::read_to_string(&path)
+                                                .await
+                                                .map_err(Error::from)
+                                                .and_then(|content| {
+                                                    toml::from_str::<RuskfileDeserializer>(&content)
+                                                        .map_err(Error::from)
+                                                });
+                                            (path, res)
                                         }
                                     });
                                 }
@@ -109,11 +140,7 @@ impl RuskfileComposer {
                 .into_inner()
                 .unwrap()
         };
-        let map: HashMap<PathBuf, RuskfileDeserializer> = join_all(loading_confs)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
+        let map: HashMap<PathBuf, _> = join_all(loading_confs).await.into_iter().collect();
         self.map.extend(map);
     }
 }
@@ -129,7 +156,10 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
     fn try_from(composer: RuskfileComposer) -> Result<Self, Self::Error> {
         let RuskfileComposer { map } = composer;
         let mut tasks = HashMap::new();
-        for (path, config) in map {
+        for (path, res) in map {
+            let Ok(config) = res else {
+                continue;
+            };
             let configfile_dir = path.parent().unwrap();
             for (name, TaskDeserializer { inner, .. }) in config.tasks {
                 let TaskDeserializerInner {

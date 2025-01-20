@@ -71,8 +71,8 @@ impl RuskfileComposer {
     }
     /// Walk through the directory and find all rusk.toml files
     pub async fn walkdir(&mut self, path: PathBuf) {
-        let configfiles = {
-            let configfiles: Arc<Mutex<Vec<_>>> = Default::default();
+        let loading_confs = {
+            let futures_collect: Arc<Mutex<Vec<_>>> = Default::default();
             WalkBuilder::new(path)
                 .require_git(true)
                 .follow_links(true)
@@ -85,7 +85,7 @@ impl RuskfileComposer {
                                     && is_ruskfile!(entry.file_name().to_str().unwrap_or(""))
                                 {
                                     let path = entry.path().to_path_buf();
-                                    configfiles.lock().unwrap().push({
+                                    futures_collect.lock().unwrap().push({
                                         // make Future of Config
                                         async {
                                             // Read file & deserialize into Config
@@ -103,14 +103,17 @@ impl RuskfileComposer {
                         WalkState::Skip
                     })
                 });
-            Arc::try_unwrap(configfiles)
+            Arc::try_unwrap(futures_collect)
                 .ok()
                 .unwrap()
                 .into_inner()
                 .unwrap()
         };
-        let map: HashMap<PathBuf, RuskfileDeserializer> =
-            join_all(configfiles).await.into_iter().flatten().collect();
+        let map: HashMap<PathBuf, RuskfileDeserializer> = join_all(loading_confs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
         self.map.extend(map);
     }
 }

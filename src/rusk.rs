@@ -10,6 +10,7 @@ use std::{
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
 use futures::future::try_join_all;
 use hashbrown::HashMap;
+use path_dedot::ParseDot;
 use tokio::sync::watch::Receiver;
 
 use crate::{
@@ -139,10 +140,14 @@ fn into_executable(
             envs, cwd, depends, ..
         } = task;
 
-        let Ok(cwd) = cwd.canonicalize() else {
-            return Err(TaskParseError::DirectoryNotFound(cwd));
+        let Ok(cwd) = || -> std::io::Result<PathBuf> {
+            let cwd = cwd.parse_dot()?;
+            let cwd = std::path::absolute(cwd)?;
+            Ok(cwd)
+        }() else {
+            return Err(TaskParseError::PathNormalizationError(cwd));
         };
-        if cwd.is_file() {
+        if !cwd.is_dir() {
             return Err(TaskParseError::DirectoryNotFound(cwd));
         }
 
@@ -285,6 +290,9 @@ impl DigraphItem<String> for TaskExecutable {
 /// Task parsing error
 #[derive(Debug, thiserror::Error)]
 pub enum TaskParseError {
+    /// Failed to normalize path
+    #[error("Failed to normalize path: {0:?}")]
+    PathNormalizationError(PathBuf),
     /// Directory not found
     #[error("Directory not found: {0:?}")]
     DirectoryNotFound(PathBuf),

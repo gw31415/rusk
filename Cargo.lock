@@ -514,6 +514,7 @@ dependencies = [
  "hashbrown",
  "ignore",
  "itertools",
+ "path-dedot",
  "serde",
  "thiserror",
  "tokio",

@@ -58,12 +58,12 @@ async fn main() {
 
     match res {
         Err(MainError::RuskError(RuskError::TaskFailed(e))) => {
-            eprint!("{} ", "Abort:".bold().red());
+            eprint!("{}: ", "abort".bold().red());
             eprintln!("{e}");
             std::process::exit(e.exit_code);
         }
         Err(e) => {
-            eprint!("{} ", "Error:".bold().red());
+            eprint!("{}: ", "error".bold().red());
             eprintln!("{e}");
             std::process::exit(1);
         }

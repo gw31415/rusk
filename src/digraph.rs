@@ -38,20 +38,20 @@ impl<'a, K: Hash + Eq + Clone> ParentsManager<'a, K> {
     }
 }
 
-impl<'a, K: Hash + Eq + Clone> Deref for ParentsManager<'a, K> {
+impl<K: Hash + Eq + Clone> Deref for ParentsManager<'_, K> {
     type Target = HashSet<K>;
     fn deref(&self) -> &Self::Target {
         self.0
     }
 }
 
-impl<'a, K: Hash + Eq + Clone> DerefMut for ParentsManager<'a, K> {
+impl<K: Hash + Eq + Clone> DerefMut for ParentsManager<'_, K> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0
     }
 }
 
-impl<'a, K: Hash + Eq + Clone> Drop for ParentsManager<'a, K> {
+impl<K: Hash + Eq + Clone> Drop for ParentsManager<'_, K> {
     fn drop(&mut self) {
         self.0.remove(self.1);
     }

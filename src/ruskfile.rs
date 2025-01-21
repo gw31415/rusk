@@ -181,7 +181,6 @@ impl RuskfileComposer {
             let (tx, mut rx) = tokio::sync::mpsc::channel(0x1000);
             tokio::task::spawn_blocking({
                 let mut walkbuilder = WalkBuilder::new(path);
-                let tx = tx.clone();
                 move || {
                     walkbuilder
                         .require_git(true)
@@ -217,7 +216,6 @@ impl RuskfileComposer {
                         });
                 }
             });
-            drop(tx);
             let mut threads = Vec::new();
             while let Some(f) = rx.recv().await {
                 threads.push(f);

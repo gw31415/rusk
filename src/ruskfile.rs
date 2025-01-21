@@ -105,6 +105,14 @@ impl Ord for TaskListItemContent<'_> {
 
 impl Display for TasksListItem<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        ////////////////////////////////////////////////
+        //
+        // Format:
+        //     (task_name)\t(description)\t"in "(path)
+        //
+        ////////////////////////////////////////////////
+
+        /// write content with tab
         macro_rules! writet {
             ($x: expr) => {
                 $x.fmt(f)?;
@@ -114,19 +122,24 @@ impl Display for TasksListItem<'_> {
 
         match self.content {
             Ok(TaskListItemContent { name, description }) => {
+                // (task_name)
                 writet!(name);
                 if let Some(description) = description {
+                    // (description)
                     writet!(description.bold());
                 }
             }
             Err(_) => {
+                // (task_name): Undefined Task
                 writet!("(null)".dimmed().italic());
             }
         }
 
+        // "in "
         "in".dimmed().italic().fmt(f)?;
         ' '.fmt(f)?;
 
+        // (path)
         self.path.as_rel_str().yellow().dimmed().italic().fmt(f)
     }
 }

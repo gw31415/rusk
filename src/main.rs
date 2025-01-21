@@ -1,4 +1,8 @@
-use std::io::{BufWriter, Write};
+use std::{
+    fmt::Display,
+    io::{BufWriter, Write},
+    time::Duration,
+};
 
 use args::Args;
 use colored::Colorize;
@@ -13,14 +17,29 @@ mod path;
 mod rusk;
 mod ruskfile;
 
+fn abort(title: &'static str, msg: impl Display, code: i32) -> ! {
+    eprintln!("{}: {}", title.bold().red(), msg);
+    std::process::exit(code);
+}
+
+const SCAN_TIMEOUT: Duration = Duration::from_millis(500);
+
 #[tokio::main]
 async fn main() {
     let args = Args::new();
 
     let mut composer = RuskfileComposer::new();
-    composer
-        .walkdir(get_current_dir()) // TODO: Project root
-        .await;
+    // TODO: Config to select either Project root or Current dir as root
+    if tokio::time::timeout(SCAN_TIMEOUT, composer.walkdir(get_current_dir()))
+        .await
+        .is_err()
+    {
+        abort(
+            "abort",
+            format_args!("Scan took over {SCAN_TIMEOUT:?}. Try in deeper directory."),
+            1,
+        );
+    }
 
     if args.no_pargs() {
         {
@@ -60,7 +79,6 @@ async fn main() {
             MainError::RuskError(RuskError::TaskFailed(e)) => ("abort", e.exit_code),
             _ => ("error", 1),
         };
-        eprintln!("{}: {}", title.bold().red(), err);
-        std::process::exit(code);
+        abort(title, err, code);
     }
 }

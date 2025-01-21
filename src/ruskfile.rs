@@ -54,13 +54,22 @@ impl Display for TaskErrorVerboseDisplay<'_> {
         let Self(inner) = self;
         match inner.content {
             Err(err) => {
-                writeln!(
-                    f,
-                    "{}:",
-                    inner.path.as_rel_str().yellow().bold().italic().underline(),
-                )?;
+                // Error Title: Decorated path
+                inner
+                    .path
+                    .as_rel_str()
+                    .yellow()
+                    .bold()
+                    .italic()
+                    .underline()
+                    .fmt(f)?;
+
+                ':'.fmt(f)?;
+
+                // Indented error message
                 for line in err.lines() {
-                    writeln!(f, "\t{}", line)?;
+                    '\t'.fmt(f)?;
+                    line.fmt(f)?;
                 }
             }
             _ => unimplemented!(),
@@ -96,23 +105,29 @@ impl Ord for TaskListItemContent<'_> {
 
 impl Display for TasksListItem<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        macro_rules! writet {
+            ($x: expr) => {
+                $x.fmt(f)?;
+                '\t'.fmt(f)?;
+            };
+        }
+
         match self.content {
             Ok(TaskListItemContent { name, description }) => {
-                write!(f, "{}\t", name)?;
+                writet!(name);
                 if let Some(description) = description {
-                    write!(f, "{}\t", description.bold())?;
+                    writet!(description.bold());
                 }
             }
             Err(_) => {
-                write!(f, "{}\t", "(null)".dimmed().italic())?;
+                writet!("(null)".dimmed().italic());
             }
         }
-        write!(
-            f,
-            "{} {}",
-            "in".dimmed().italic(),
-            self.path.as_rel_str().yellow().dimmed().italic(),
-        )
+
+        "in".dimmed().italic().fmt(f)?;
+        ' '.fmt(f)?;
+
+        self.path.as_rel_str().yellow().dimmed().italic().fmt(f)
     }
 }
 

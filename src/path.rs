@@ -96,7 +96,16 @@ const NORM_PATH_ERR: &str = "Failed to process path. Please check:\n\t① Paths 
 
 impl<'a, T: Into<Cow<'a, Path>>> From<T> for NormarizedPath {
     fn from(value: T) -> Self {
-        normalize_path(value)
+        let path: Cow<'_, Path> = value.into();
+        let path = path
+            .parse_dot_from(get_current_dir().as_abs_str())
+            .expect(NORM_PATH_ERR);
+        let abs = std::path::absolute(path).expect(NORM_PATH_ERR);
+        let abs = abs.into_os_string().into_string().expect(NORM_PATH_ERR);
+        NormarizedPath {
+            abs,
+            rel: Some(OnceCell::new()),
+        }
     }
 }
 
@@ -110,17 +119,6 @@ impl Sub for &NormarizedPath {
             .into_string()
             .expect(NORM_PATH_ERR)
     }
-}
-
-fn normalize_path<'a>(path: impl Into<Cow<'a, Path>>) -> NormarizedPath {
-    let path: Cow<'_, Path> = path.into();
-    let path = path
-        .parse_dot_from(get_current_dir().as_abs_str())
-        .expect(NORM_PATH_ERR);
-    let abs = std::path::absolute(path).expect(NORM_PATH_ERR);
-    let abs = abs.into_os_string().into_string().expect(NORM_PATH_ERR);
-    let rel = Some(OnceCell::new());
-    NormarizedPath { rel, abs }
 }
 
 /// Returns the current directory as a normalized path.

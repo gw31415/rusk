@@ -22,9 +22,9 @@ pub struct RuskfileComposer {
 
 /// Check if the filename is ruskfile
 macro_rules! is_ruskfile {
-    ($f: expr) => {
-        matches!($f, "rusk.toml" | ".rusk.toml")
-    };
+    ($f: expr) => {{
+        $f == "rusk.toml" || $f.ends_with(".rusk.toml")
+    }};
 }
 
 /// Item of tasks_list

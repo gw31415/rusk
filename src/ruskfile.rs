@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{ffi::OsStr, fmt::Display, path::Path};
 
 use anyhow::Error;
 use colored::Colorize;
@@ -21,10 +17,11 @@ pub struct RuskfileComposer {
 }
 
 /// Check if the filename is ruskfile
-macro_rules! is_ruskfile {
-    ($f: expr) => {{
-        $f == "rusk.toml" || $f.ends_with(".rusk.toml")
-    }};
+fn is_ruskfile(name: &OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    name == "rusk.toml" || name.ends_with(".rusk.toml")
 }
 
 /// Item of tasks_list
@@ -180,48 +177,54 @@ impl RuskfileComposer {
 
     /// Walk through the directory and find all rusk.toml files
     pub async fn walkdir(&mut self, path: impl AsRef<Path>) {
-        let loading_confs = {
-            let futures_collect: Arc<Mutex<Vec<_>>> = Default::default();
-            WalkBuilder::new(path)
-                .require_git(true)
-                .follow_links(true)
-                .build_parallel()
-                .run(|| {
-                    Box::new(|res| {
-                        if let Ok(entry) = res {
-                            if let Some(ft) = entry.file_type() {
-                                if ft.is_file()
-                                    && is_ruskfile!(entry.file_name().to_str().unwrap_or(""))
-                                {
-                                    let path = entry.path().to_path_buf();
-                                    futures_collect.lock().unwrap().push({
-                                        // make Future of Config
-                                        async move {
-                                            let res = tokio::fs::read_to_string(&path)
-                                                .await
-                                                .map_err(Error::from)
-                                                .and_then(|content| {
-                                                    toml::from_str::<RuskfileDeserializer>(&content)
+        let threads = {
+            let (tx, mut rx) = tokio::sync::mpsc::channel(0x1000);
+            tokio::task::spawn_blocking({
+                let mut walkbuilder = WalkBuilder::new(path);
+                let tx = tx.clone();
+                move || {
+                    walkbuilder
+                        .require_git(true)
+                        .follow_links(true)
+                        .build_parallel()
+                        .run(|| {
+                            Box::new(|res| {
+                                if let Ok(entry) = res {
+                                    if let Some(ft) = entry.file_type() {
+                                        if ft.is_file() && is_ruskfile(entry.file_name()) {
+                                            let path = NormarizedPath::from(entry.path());
+                                            tx.blocking_send(async move {
+                                                // make Future of Config
+                                                let res = tokio::fs::read_to_string(&path)
+                                                    .await
+                                                    .map_err(Error::from)
+                                                    .and_then(|content| {
+                                                        toml::from_str::<RuskfileDeserializer>(
+                                                            &content,
+                                                        )
                                                         .map_err(Error::from)
-                                                })
-                                                .map_err(|err| err.to_string());
-                                            (path.into(), res)
+                                                    })
+                                                    .map_err(|err| err.to_string());
+                                                (path, res)
+                                            })
+                                            .unwrap();
                                         }
-                                    });
+                                        return WalkState::Continue;
+                                    }
                                 }
-                                return WalkState::Continue;
-                            }
-                        }
-                        WalkState::Skip
-                    })
-                });
-            Arc::try_unwrap(futures_collect)
-                .ok()
-                .unwrap()
-                .into_inner()
-                .unwrap()
+                                WalkState::Skip
+                            })
+                        });
+                }
+            });
+            drop(tx);
+            let mut threads = Vec::new();
+            while let Some(f) = rx.recv().await {
+                threads.push(f);
+            }
+            threads
         };
-        let map: HashMap<NormarizedPath, _> = join_all(loading_confs).await.into_iter().collect();
+        let map: HashMap<NormarizedPath, _> = join_all(threads).await.into_iter().collect();
         self.map.extend(map);
     }
 }

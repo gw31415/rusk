@@ -14,6 +14,7 @@ use path_dedot::ParseDot;
 /// - This contains a relative path and an absolute path.
 /// - This doesn't contain any dots, other than the current directory.
 /// - This is encoded in UTF-8.
+#[derive(Clone)]
 pub struct NormarizedPath {
     rel: Option<OnceCell<String>>,
     abs: String,

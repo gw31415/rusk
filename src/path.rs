@@ -44,13 +44,18 @@ impl NormarizedPath {
     pub fn as_rel_str(&self) -> &str {
         if let Some(rel) = &self.rel {
             rel.get_or_init(|| {
-                let rel = pathdiff::diff_paths(self.as_abs_str(), get_current_dir().as_abs_str())
-                    .expect(NORM_PATH_ERR)
-                    .into_os_string()
-                    .into_string()
-                    .expect(NORM_PATH_ERR);
+                let rel = self - get_current_dir();
+
+                // Special handling because the path is relative to the current directory
+                // - "." for the current directory itself for the current directory itself
+                // - Otherwise, if it is not an absolute path, start with "./".
+                // - Otherwise, then it is an absolute path, leave it as it is.
                 if rel.is_empty() {
-                    ".".to_string()
+                    ".".to_owned()
+                } else if Path::new(&rel).is_relative() {
+                    let mut new_rel = Vec::from(b"./");
+                    new_rel.extend(rel.into_bytes());
+                    String::from_utf8(new_rel).unwrap() // Because rel has been String, "./" is always valid UTF-8.
                 } else {
                     rel
                 }

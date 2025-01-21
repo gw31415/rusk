@@ -6,16 +6,16 @@ use std::{
 
 use args::Args;
 use colored::Colorize;
+use fs::RuskfileComposer;
 use itertools::Itertools;
 use path::get_current_dir;
 use rusk::{Rusk, RuskError};
-use ruskfile::RuskfileComposer;
 
 mod args;
 mod digraph;
+mod fs;
 mod path;
 mod rusk;
-mod ruskfile;
 
 fn abort(title: &'static str, msg: impl Display, code: i32) -> ! {
     eprintln!("{}: {}", title.bold().red(), msg);
@@ -64,7 +64,7 @@ async fn main() {
         #[error(transparent)]
         RuskError(#[from] RuskError),
         #[error(transparent)]
-        RuskfileConvertError(#[from] ruskfile::RuskfileConvertError),
+        RuskfileConvertError(#[from] fs::RuskfileConvertError),
     }
 
     let res: Result<(), MainError> = async move {

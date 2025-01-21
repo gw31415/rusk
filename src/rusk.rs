@@ -13,8 +13,8 @@ use tokio::sync::watch::Receiver;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
+    fs::{RuskfileComposer, RuskfileConvertError},
     path::NormarizedPath,
-    ruskfile::{RuskfileComposer, RuskfileConvertError},
 };
 
 type TaskKey = String;

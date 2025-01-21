@@ -222,8 +222,7 @@ impl RuskfileComposer {
             }
             threads
         };
-        let map: HashMap<NormarizedPath, _> = join_all(threads).await.into_iter().collect();
-        self.map.extend(map);
+        self.map.extend(join_all(threads).await);
     }
 }
 

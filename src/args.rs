@@ -20,8 +20,8 @@ impl Args {
             },
         }
     }
-    /// Returns true if there are no positional arguments.
-    pub fn is_empty(&self) -> bool {
+    /// Whether or not there are no positional arguments.
+    pub fn no_pargs(&self) -> bool {
         self.iter.first.is_none()
     }
 }

@@ -22,7 +22,7 @@ async fn main() {
         .walkdir(get_current_dir()) // TODO: Project root
         .await;
 
-    if args.is_empty() {
+    if args.no_pargs() {
         {
             let mut stdout = BufWriter::new(std::io::stdout().lock());
             for task in composer.tasks_list().sorted() {

@@ -23,20 +23,20 @@ async fn main() {
         .await;
 
     if args.is_empty() {
-        let stdout = std::io::stdout();
-        let mut stdout = BufWriter::new(stdout.lock());
-
-        for task in composer.tasks_list().sorted() {
-            writeln!(stdout, "{}", task).unwrap();
+        {
+            let mut stdout = BufWriter::new(std::io::stdout().lock());
+            for task in composer.tasks_list().sorted() {
+                writeln!(stdout, "{}", task).unwrap();
+            }
+            stdout.flush().unwrap();
         }
-        stdout.flush().unwrap();
-
-        let stderr = std::io::stderr();
-        let mut stderr = BufWriter::new(stderr.lock());
-        for err in composer.errors_list().sorted() {
-            writeln!(stderr, "\n{}", err.verbose()).unwrap();
+        {
+            let mut stderr = BufWriter::new(std::io::stderr().lock());
+            for err in composer.errors_list().sorted() {
+                writeln!(stderr, "\n{}", err.verbose()).unwrap();
+            }
+            stderr.flush().unwrap();
         }
-        stderr.flush().unwrap();
         return;
     }
 

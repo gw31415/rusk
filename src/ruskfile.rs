@@ -70,6 +70,7 @@ impl Display for TaskErrorVerboseDisplay<'_> {
                 for line in err.lines() {
                     '\t'.fmt(f)?;
                     line.fmt(f)?;
+                    '\n'.fmt(f)?;
                 }
             }
             _ => unimplemented!(),

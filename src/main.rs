@@ -55,17 +55,12 @@ async fn main() {
     }
     .await;
 
-    match res {
-        Err(MainError::RuskError(RuskError::TaskFailed(e))) => {
-            eprint!("{}: ", "abort".bold().red());
-            eprintln!("{e}");
-            std::process::exit(e.exit_code);
-        }
-        Err(e) => {
-            eprint!("{}: ", "error".bold().red());
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-        _ => (),
+    if let Err(err) = res {
+        let (title, code) = match &err {
+            MainError::RuskError(RuskError::TaskFailed(e)) => ("abort", e.exit_code),
+            _ => ("error", 1),
+        };
+        eprintln!("{}: {}", title.bold().red(), err);
+        std::process::exit(code);
     }
 }

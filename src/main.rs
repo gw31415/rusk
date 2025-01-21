@@ -24,7 +24,7 @@ async fn main() {
 
     if args.is_empty() {
         let stdout = std::io::stdout();
-        let mut stdout = BufWriter::new(stdout);
+        let mut stdout = BufWriter::new(stdout.lock());
 
         for task in composer.tasks_list().sorted() {
             writeln!(stdout, "{}", task).unwrap();
@@ -32,7 +32,7 @@ async fn main() {
         stdout.flush().unwrap();
 
         let stderr = std::io::stderr();
-        let mut stderr = BufWriter::new(stderr);
+        let mut stderr = BufWriter::new(stderr.lock());
         for err in composer.errors_list().sorted() {
             writeln!(stderr, "\n{}", err.verbose()).unwrap();
         }

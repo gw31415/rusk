@@ -127,7 +127,11 @@ impl<'a> TaskKeyRef<'a> {
     }
     pub fn into_task_key(mut self) -> TaskKey {
         std::mem::replace(self.owned.deref_mut(), unsafe {
-            std::ptr::read(std::alloc::alloc(std::alloc::Layout::new::<TaskKey>()) as *const TaskKey)
+            use std::{
+                alloc::{alloc, Layout},
+                ptr::read,
+            };
+            read(alloc(Layout::new::<TaskKey>()) as *const TaskKey)
         })
     }
 }

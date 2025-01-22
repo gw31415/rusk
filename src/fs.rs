@@ -7,7 +7,11 @@ use hashbrown::{hash_map::EntryRef, HashMap};
 use ignore::{WalkBuilder, WalkState};
 use toml::Table;
 
-use crate::{path::NormarizedPath, rusk::Task};
+use crate::{
+    path::NormarizedPath,
+    rusk::Task,
+    taskkey::{TaskKey, TaskKeyRef, TaskKeyRelative},
+};
 
 /// Configuration files
 #[derive(Default)]
@@ -33,20 +37,20 @@ pub struct TasksListItem<'a> {
     path: &'a NormarizedPath,
 }
 
-impl TasksListItem<'_> {
+impl<'a> TasksListItem<'a> {
     /// Write verbose error
-    pub fn verbose(&self) -> impl Display + '_ {
+    pub fn into_verbose(self) -> impl Display + 'a {
         if self.content.is_ok() {
             panic!("TasksListItem::verbose() is not for Ok variant");
         }
-        TaskErrorVerboseDisplay(self)
+        TaskErrorVerboseDisplayer(self)
     }
 }
 
 /// Struct which implements Display to show error verbose
-struct TaskErrorVerboseDisplay<'a>(&'a TasksListItem<'a>);
+struct TaskErrorVerboseDisplayer<'a>(TasksListItem<'a>);
 
-impl Display for TaskErrorVerboseDisplay<'_> {
+impl Display for TaskErrorVerboseDisplayer<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;
         match inner.content {
@@ -88,15 +92,15 @@ impl Ord for TasksListItem<'_> {
 
 #[derive(PartialEq, Eq, PartialOrd)]
 struct TaskListItemContent<'a> {
-    /// Task name
-    name: &'a str,
+    /// TaskKey
+    key: TaskKeyRef<'a>,
     /// Task description
     description: Option<&'a str>,
 }
 
 impl Ord for TaskListItemContent<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name.cmp(other.name)
+        self.key.cmp(&other.key)
     }
 }
 
@@ -117,10 +121,10 @@ impl Display for TasksListItem<'_> {
             };
         }
 
-        match self.content {
-            Ok(TaskListItemContent { name, description }) => {
+        match &self.content {
+            Ok(TaskListItemContent { key, description }) => {
                 // (task_name)
-                writet!(name);
+                writet!(key);
                 if let Some(description) = description {
                     // (description)
                     writet!(description.bold());
@@ -153,9 +157,9 @@ impl RuskfileComposer {
         self.map
             .iter()
             .filter_map(|(path, res)| match res {
-                Ok(config) => Some(config.tasks.iter().map(move |(name, task)| TasksListItem {
+                Ok(config) => Some(config.tasks.iter().map(move |(key, task)| TasksListItem {
                     content: Ok(TaskListItemContent {
-                        name,
+                        key: key.as_task_key(Path::parent(path).unwrap()),
                         description: task.description.as_deref(),
                     }),
                     path,
@@ -228,11 +232,13 @@ impl RuskfileComposer {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuskfileConvertError {
-    #[error("Task {0:?} is duplicated")]
-    DuplicatedTaskName(String),
+    #[error("Task {0} is duplicated")]
+    DuplicatedTaskName(TaskKey),
+    #[error("Failed to convert Task: {0}")]
+    DeserializeError(#[from] toml::de::Error),
 }
 
-impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
+impl TryFrom<RuskfileComposer> for HashMap<TaskKey, Task> {
     type Error = RuskfileConvertError;
     fn try_from(composer: RuskfileComposer) -> Result<Self, Self::Error> {
         let RuskfileComposer { map } = composer;
@@ -242,23 +248,27 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
                 continue;
             };
             let configfile_dir = path.parent().unwrap(); // NOTE: path is guaranteed to be a NormalizedPath of an existing file, so it should have a parent directory
-            for (name, TaskDeserializer { inner, .. }) in config.tasks {
+            for (key, TaskDeserializer { inner, .. }) in config.tasks {
+                let key = key.into_task_key(&configfile_dir);
                 let TaskDeserializerInner {
                     envs,
                     script,
                     depends,
                     cwd,
-                } = inner.try_into().unwrap(); // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
-                match tasks.entry_ref(&name) {
+                } = inner.try_into()?; // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
+                match tasks.entry_ref(&key) {
                     EntryRef::Occupied(_) => {
-                        return Err(RuskfileConvertError::DuplicatedTaskName(name));
+                        return Err(RuskfileConvertError::DuplicatedTaskName(key));
                     }
                     EntryRef::Vacant(e) => {
                         e.insert(Task {
                             envs,
                             script,
                             cwd: configfile_dir.join(cwd).into(),
-                            depends,
+                            depends: depends
+                                .into_iter()
+                                .map(|key| key.into_task_key(&configfile_dir))
+                                .collect(),
                         });
                     }
                 }
@@ -273,7 +283,7 @@ impl TryFrom<RuskfileComposer> for HashMap<String, Task> {
 struct RuskfileDeserializer {
     /// TaskDeserializers map
     #[serde(default)]
-    tasks: HashMap<String, TaskDeserializer>,
+    tasks: HashMap<TaskKeyRelative, TaskDeserializer>,
 }
 
 /// serde::Deserialize of Each rusk Task
@@ -297,7 +307,7 @@ struct TaskDeserializerInner {
     script: Option<String>,
     /// Dependencies
     #[serde(default)]
-    depends: Vec<String>,
+    depends: Vec<TaskKeyRelative>,
     /// Working directory
     #[serde(default)]
     cwd: String,

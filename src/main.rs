@@ -16,6 +16,7 @@ mod digraph;
 mod fs;
 mod path;
 mod rusk;
+mod taskkey;
 
 fn abort(title: &'static str, msg: impl Display, code: i32) -> ! {
     eprintln!("{}: {}", title.bold().red(), msg);
@@ -52,7 +53,7 @@ async fn main() {
         {
             let mut stderr = BufWriter::new(std::io::stderr().lock());
             for err in composer.errors_list().sorted() {
-                writeln!(stderr, "\n{}", err.verbose()).unwrap();
+                writeln!(stderr, "\n{}", err.into_verbose()).unwrap();
             }
             stderr.flush().unwrap();
         }

@@ -14,16 +14,18 @@ use tokio::sync::watch::Receiver;
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
     fs::{RuskfileComposer, RuskfileConvertError},
-    path::NormarizedPath,
+    path::{get_current_dir, NormarizedPath},
+    taskkey::{TaskKey, TaskKeyParseError, TaskKeyRelative},
 };
-
-type TaskKey = String;
 
 type TaskTree = TreeNode<TaskKey, TaskExecutable>;
 
 /// Rusk error
 #[derive(Debug, thiserror::Error)]
 pub enum RuskError {
+    /// Task key parsing error
+    #[error(transparent)]
+    InvalidTaskKey(#[from] TaskKeyParseError),
     /// TreeNode creation error
     #[error(transparent)]
     TreeNodeBroken(#[from] TreeNodeCreationError<TaskKey>),
@@ -71,12 +73,22 @@ impl Rusk {
     /// Execute tasks
     pub async fn exec(
         self,
-        tasknames: impl IntoIterator<Item = String>,
+        args: impl IntoIterator<Item = String>,
         opts: ExecuteOpts,
     ) -> Result<(), RuskError> {
         let Rusk { tasks } = self;
         let tasks = into_executable(tasks, opts)?;
-        let graph = TreeNode::new_vec(tasks, tasknames)?;
+        let tk = args
+            .into_iter()
+            .map({
+                fn f(s: String) -> Result<TaskKey, TaskKeyParseError> {
+                    let key = TaskKeyRelative::try_from(s)?;
+                    Ok(key.into_task_key(get_current_dir()))
+                }
+                f
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let graph = TreeNode::new_vec(tasks, tk)?;
         exec_all(graph).await?;
         Ok(())
     }
@@ -91,7 +103,7 @@ pub struct Task {
     /// Working directory
     pub cwd: NormarizedPath,
     /// Dependencies
-    pub depends: Vec<String>,
+    pub depends: Vec<TaskKey>,
 }
 
 /// Task execution global options

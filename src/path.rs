@@ -1,10 +1,4 @@
-use std::{
-    borrow::Cow,
-    fmt::Debug,
-    hash::Hash,
-    ops::{Deref, Sub},
-    path::Path,
-};
+use std::{borrow::Cow, fmt::Debug, hash::Hash, ops::Deref, path::Path};
 
 use once_cell::sync::OnceCell;
 
@@ -41,11 +35,18 @@ impl PartialOrd for NormarizedPath {
 }
 
 impl NormarizedPath {
+    pub fn parent(&self) -> Option<Self> {
+        Path::parent(self).map(NormarizedPath::from)
+    }
     /// Returns the path as a string slice.
     pub fn as_rel_str(&self) -> &str {
         if let Some(rel) = &self.rel {
             rel.get_or_init(|| {
-                let rel = self - get_current_dir();
+                let rel = pathdiff::diff_paths(self.as_abs_str(), get_current_dir())
+                    .expect(NORM_PATH_ERR)
+                    .into_os_string()
+                    .into_string()
+                    .expect(NORM_PATH_ERR);
 
                 // Special handling because the path is relative to the current directory
                 // - "." for the current directory itself for the current directory itself
@@ -107,18 +108,6 @@ impl<'a, T: Into<Cow<'a, Path>>> From<T> for NormarizedPath {
             abs,
             rel: Some(OnceCell::new()),
         }
-    }
-}
-
-impl Sub for &NormarizedPath {
-    type Output = String;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        pathdiff::diff_paths(self.as_abs_str(), rhs)
-            .expect(NORM_PATH_ERR)
-            .into_os_string()
-            .into_string()
-            .expect(NORM_PATH_ERR)
     }
 }
 

@@ -197,8 +197,8 @@ impl TaskKeyRelative {
     pub fn as_task_key<'a>(&'a self, base: &'a Path) -> TaskKeyRef<'a> {
         TaskKeyRef::new(self, base)
     }
-    pub fn into_task_key(self, base: &Path) -> TaskKey {
-        self.as_task_key(base).into_task_key()
+    pub fn into_task_key(self, cwd: &Path) -> TaskKey {
+        self.as_task_key(cwd).into_task_key()
     }
 }
 

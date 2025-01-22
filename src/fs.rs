@@ -247,7 +247,7 @@ impl TryFrom<RuskfileComposer> for HashMap<TaskKey, Task> {
             let Ok(config) = res else {
                 continue;
             };
-            let configfile_dir = path.parent().unwrap(); // NOTE: path is guaranteed to be a NormalizedPath of an existing file, so it should have a parent directory
+            let configfile_dir = path.into_parent().unwrap(); // NOTE: path is guaranteed to be a NormalizedPath of an existing file, so it should have a parent directory
             for (key, TaskDeserializer { inner, .. }) in config.tasks {
                 let key = key.into_task_key(&configfile_dir);
                 let TaskDeserializerInner {

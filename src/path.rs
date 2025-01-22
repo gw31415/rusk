@@ -1,4 +1,10 @@
-use std::{borrow::Cow, fmt::Debug, hash::Hash, ops::Deref, path::Path};
+use std::{
+    borrow::Cow,
+    fmt::Debug,
+    hash::Hash,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use once_cell::sync::OnceCell;
 
@@ -35,8 +41,15 @@ impl PartialOrd for NormarizedPath {
 }
 
 impl NormarizedPath {
-    pub fn parent(&self) -> Option<Self> {
-        Path::parent(self).map(NormarizedPath::from)
+    /// Returns the parent directory of the path.
+    pub fn into_parent(self) -> Option<Self> {
+        let mut abs = PathBuf::from(self.abs);
+        // De-dotted path so once pop is enough.
+        if abs.pop() {
+            Some(NormarizedPath::from(abs))
+        } else {
+            None
+        }
     }
     /// Returns the path as a string slice.
     pub fn as_rel_str(&self) -> &str {

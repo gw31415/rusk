@@ -13,19 +13,19 @@ use tokio::sync::watch::Receiver;
 
 use crate::{
     digraph::{DigraphItem, TreeNode, TreeNodeCreationError},
-    fs::{RuskfileComposer, RuskfileConvertError},
+    fs::{RuskfileComposer, RuskfileDeserializeError},
     path::{get_current_dir, NormarizedPath},
     taskkey::{TaskKey, TaskKeyParseError, TaskKeyRelative},
 };
 
 type TaskTree = TreeNode<TaskKey, TaskExecutable>;
 
-/// Rusk error
+/// Errors that can occur during Rusk operation
 #[derive(Debug, thiserror::Error)]
 pub enum RuskError {
-    /// Task key parsing error
-    #[error(transparent)]
-    InvalidTaskKey(#[from] TaskKeyParseError),
+    /// Argument parsing error
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(#[from] TaskKeyParseError),
     /// TreeNode creation error
     #[error(transparent)]
     TreeNodeBroken(#[from] TreeNodeCreationError<TaskKey>),
@@ -37,6 +37,7 @@ pub enum RuskError {
     TaskFailed(#[from] TaskError),
 }
 
+/// IO set about deno_task_shell
 #[derive(Clone)]
 pub struct IOSet {
     pub stdin: ShellPipeReader,
@@ -61,7 +62,7 @@ pub struct Rusk {
 }
 
 impl TryFrom<RuskfileComposer> for Rusk {
-    type Error = RuskfileConvertError;
+    type Error = RuskfileDeserializeError;
     fn try_from(value: RuskfileComposer) -> Result<Self, Self::Error> {
         Ok(Rusk {
             tasks: value.try_into()?,
@@ -133,7 +134,7 @@ fn into_executable(
 ) -> Result<HashMap<TaskKey, TaskExecutable>, TaskParseError> {
     let mut parsed_tasks: HashMap<TaskKey, TaskExecutable> = HashMap::new();
 
-    for (task_name, task) in tasks {
+    for (key, task) in tasks {
         let script = {
             let mut items = Vec::new();
             if let Some(script) = task.script {
@@ -141,7 +142,7 @@ fn into_executable(
                     items.extend(match deno_task_shell::parser::parse(line) {
                         Ok(script) => script.items,
                         Err(error) => {
-                            return Err(TaskParseError::ScriptParseError { task_name, error })?;
+                            return Err(TaskParseError::ScriptParseError { key, error })?;
                         }
                     });
                 }
@@ -158,10 +159,10 @@ fn into_executable(
         }
 
         parsed_tasks.insert(
-            task_name.clone(),
+            key.clone(),
             TaskExecutableInner {
                 io: io.clone(),
-                task_name,
+                key,
                 script,
                 depends,
                 envs: global_env.clone().into_iter().chain(envs).collect(),
@@ -188,12 +189,7 @@ async fn exec_all(roots: impl IntoIterator<Item = TaskTree>) -> TaskResult {
     Ok(())
 }
 
-enum TaskExecutableState {
-    Initialized(TaskExecutableInner),
-    Processing(Receiver<Option<TaskResult>>),
-    Done(TaskResult),
-}
-
+/// Independent TaskExecutable with state
 struct TaskExecutable(RefCell<TaskExecutableState>);
 
 impl TaskExecutable {
@@ -206,19 +202,19 @@ impl TaskExecutable {
                         if let Some(res) = rx.borrow().as_ref() {
                             break 'res res.clone();
                         }
-                        rx.clone() // チャンネルをブロック外に持ち出し、**self.0 の参照を解放** する
+                        rx.clone() // Bring the channel out of the block and **release self.0 references**.
                     }
                     _ => {
-                        break 'early_return; // タスクを実行する必要がある
+                        break 'early_return; // Tasks need to be performed
                     }
                 };
 
-                // タスクが実行中の場合 (Processing)、結果を待つ
+                // If task is running (Processing), wait for results
                 rx.changed().await.unwrap();
                 break 'res rx.borrow().as_ref().unwrap().clone();
             }
 
-            // もしタスクを実際に実行する場合、Watcherを作成して終了時に結果を送信する
+            // If the task is actually executed, create a Watcher and send the results when finished
             let (tx, rx) = tokio::sync::watch::channel(None);
             let TaskExecutableState::Initialized(inner) = std::mem::replace(
                 &mut self.0.try_borrow_mut().unwrap() as &mut TaskExecutableState,
@@ -236,12 +232,29 @@ impl TaskExecutable {
     }
 }
 
+/// TaskExecutable state
+enum TaskExecutableState {
+    /// Task is not executed yet
+    Initialized(TaskExecutableInner),
+    /// Task is being executed
+    Processing(Receiver<Option<TaskResult>>),
+    /// Task is done
+    Done(TaskResult),
+}
+
+/// TaskExecutable inner data to exec deno_task_shell
 struct TaskExecutableInner {
+    /// IO set
     io: IOSet,
-    task_name: TaskKey,
+    /// TaskKey
+    key: TaskKey,
+    /// Environment variables
     envs: std::collections::HashMap<String, String>,
+    /// Script to be executed
     script: SequentialList,
+    /// Working directory
     cwd: NormarizedPath,
+    /// TaskKeys that this task depends on
     depends: Vec<TaskKey>, // 依存関係の検索についてはTaskKeyを用いるか検討が必要
 }
 
@@ -258,7 +271,7 @@ impl IntoFuture for TaskExecutableInner {
         Box::pin(async move {
             let TaskExecutableInner {
                 io,
-                task_name,
+                key,
                 envs,
                 script,
                 cwd,
@@ -275,10 +288,7 @@ impl IntoFuture for TaskExecutableInner {
             if exit_code == 0 {
                 Ok(())
             } else {
-                Err(TaskError {
-                    task_name,
-                    exit_code,
-                })
+                Err(TaskError { key, exit_code })
             }
         })
     }
@@ -300,18 +310,15 @@ pub enum TaskParseError {
     #[error("Directory not found: {0}")]
     DirectoryNotFound(NormarizedPath),
     /// Task script parse error
-    #[error("Task {task_name:?} script parse error: {error:?}")]
-    ScriptParseError {
-        task_name: TaskKey,
-        error: anyhow::Error,
-    },
+    #[error("Task {key:?} script parse error: {error:?}")]
+    ScriptParseError { key: TaskKey, error: anyhow::Error },
 }
 
 /// Task execution error
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("Task {task_name:?} failed with exit code {exit_code}")]
+#[error("Task {key:?} failed with exit code {exit_code}")]
 pub struct TaskError {
-    pub task_name: TaskKey,
+    pub key: TaskKey,
     pub exit_code: i32,
 }
 

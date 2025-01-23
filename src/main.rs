@@ -18,12 +18,14 @@ mod path;
 mod rusk;
 mod taskkey;
 
+/// Abort the program with a message.
 #[cold]
 fn abort(title: &'static str, msg: impl Display, code: i32) -> ! {
     eprintln!("{}: {}", title.bold().red(), msg);
     std::process::exit(code);
 }
 
+/// Timeout for scanning the directory.
 const SCAN_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[tokio::main]
@@ -61,14 +63,6 @@ async fn main() {
         return;
     }
 
-    #[derive(Debug, thiserror::Error)]
-    enum MainError {
-        #[error(transparent)]
-        RuskError(#[from] RuskError),
-        #[error(transparent)]
-        RuskfileConvertError(#[from] fs::RuskfileConvertError),
-    }
-
     let res: Result<(), MainError> = async move {
         let composer = Rusk::try_from(composer)?;
         composer.exec(args, Default::default()).await?;
@@ -83,4 +77,15 @@ async fn main() {
         };
         abort(title, err, code);
     }
+}
+
+/// Main error type.
+#[derive(Debug, thiserror::Error)]
+enum MainError {
+    /// Error when converting RuskfileComposer to Rusk.
+    #[error(transparent)]
+    RuskfileDeserializeError(#[from] fs::RuskfileDeserializeError),
+    /// Rusk error.
+    #[error(transparent)]
+    RuskError(#[from] RuskError),
 }

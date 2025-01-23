@@ -231,7 +231,7 @@ impl RuskfileComposer {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum RuskfileConvertError {
+pub enum RuskfileDeserializeError {
     #[error("Task {0} is duplicated")]
     DuplicatedTaskName(TaskKey),
     #[error("Failed to convert Task: {0}")]
@@ -239,7 +239,7 @@ pub enum RuskfileConvertError {
 }
 
 impl TryFrom<RuskfileComposer> for HashMap<TaskKey, Task> {
-    type Error = RuskfileConvertError;
+    type Error = RuskfileDeserializeError;
     fn try_from(composer: RuskfileComposer) -> Result<Self, Self::Error> {
         let RuskfileComposer { map } = composer;
         let mut tasks = HashMap::new();
@@ -258,7 +258,7 @@ impl TryFrom<RuskfileComposer> for HashMap<TaskKey, Task> {
                 } = inner.try_into()?; // NOTE: It is guaranteed to be a table, and fields that are not present will have default values.
                 match tasks.entry_ref(&key) {
                     EntryRef::Occupied(_) => {
-                        return Err(RuskfileConvertError::DuplicatedTaskName(key));
+                        return Err(RuskfileDeserializeError::DuplicatedTaskName(key));
                     }
                     EntryRef::Vacant(e) => {
                         e.insert(Task {

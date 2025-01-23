@@ -1,3 +1,5 @@
+//! Implementations for TaskKey and its related types.
+
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
@@ -11,6 +13,8 @@ use serde::Deserialize;
 
 use crate::path::NormarizedPath;
 
+/// String representing the Phony task.
+/// Must match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PhonyTaskString {
     inner: String,
@@ -22,25 +26,28 @@ impl AsRef<str> for PhonyTaskString {
     }
 }
 
+/// Error when parsing PhonyTaskString.
 #[derive(Debug, thiserror::Error)]
-#[error("Failed to parse Phony-TaskKey: {0}")]
-pub struct NotPhonyTaskString(&'static str);
+#[error("{0}")]
+pub struct PhonyTaskStringParseError(&'static str);
 
 impl TryFrom<String> for PhonyTaskString {
-    type Error = NotPhonyTaskString;
+    type Error = PhonyTaskStringParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() {
-            return Err(NotPhonyTaskString("empty string is not allowed"));
+            return Err(PhonyTaskStringParseError("empty string is not allowed"));
         }
         let mut chars = value.chars();
         let first = chars.next().unwrap();
         if !first.is_ascii_alphabetic() {
-            return Err(NotPhonyTaskString("first character must be alphabetic"));
+            return Err(PhonyTaskStringParseError(
+                "first character must be alphabetic",
+            ));
         }
         for c in chars {
             if !c.is_ascii_alphanumeric() && c != '_' && c != '-' {
-                return Err(NotPhonyTaskString(
+                return Err(PhonyTaskStringParseError(
                     "only /^[a-zA-Z][a-zA-Z0-9_-]*$/ is allowed",
                 ));
             }
@@ -49,6 +56,8 @@ impl TryFrom<String> for PhonyTaskString {
     }
 }
 
+/// String representing the Path task.
+/// Must contain '/' or '.'.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PathTaskString {
     inner: String,
@@ -60,25 +69,27 @@ impl AsRef<str> for PathTaskString {
     }
 }
 
+/// Error when parsing PathTaskString.
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to parse Phony-TaskKey: {0}")]
-pub struct NotPathTaskString(&'static str);
+pub struct PathTaskStringParseError(&'static str);
 
 impl TryFrom<String> for PathTaskString {
-    type Error = NotPathTaskString;
+    type Error = PathTaskStringParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() {
-            return Err(NotPathTaskString("empty string is not allowed"));
+            return Err(PathTaskStringParseError("empty string is not allowed"));
         }
         if value.contains('/') || value.contains('.') {
             Ok(PathTaskString { inner: value })
         } else {
-            Err(NotPathTaskString("Path must contain '/' or '.'"))
+            Err(PathTaskStringParseError("Path must contain '/' or '.'"))
         }
     }
 }
 
+/// Reference to TaskKey.
 pub struct TaskKeyRef<'a> {
     inner: &'a TaskKeyRelative,
     owned: Lazy<TaskKey, Box<dyn Fn() -> TaskKey + 'a>>,
@@ -136,12 +147,14 @@ impl<'a> TaskKeyRef<'a> {
     }
 }
 
+/// TaskKey is either Phony or File.
 #[derive(Clone, Eq)]
 pub enum TaskKey {
     Phony(PhonyTaskString),
     File(NormarizedPath),
 }
 
+/// TaskKey string data without the base path information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(try_from = "String")]
 pub enum TaskKeyRelative {
@@ -168,13 +181,15 @@ impl Ord for TaskKeyRelative {
     }
 }
 
+/// Error when parsing TaskKey.
 #[derive(Debug, thiserror::Error)]
-#[error("failed to parse task key: {0}")]
 pub enum TaskKeyParseError {
     #[error("empty string is not allowed")]
     Empty,
-    Phony(#[from] NotPhonyTaskString),
-    Path(#[from] NotPathTaskString),
+    #[error(transparent)]
+    Phony(#[from] PhonyTaskStringParseError),
+    #[error(transparent)]
+    Path(#[from] PathTaskStringParseError),
 }
 
 impl TryFrom<String> for TaskKeyRelative {

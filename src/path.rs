@@ -16,8 +16,10 @@ use path_dedot::ParseDot;
 /// - This is encoded in UTF-8.
 #[derive(Clone)]
 pub struct NormarizedPath {
-    rel: Option<OnceCell<String>>,
+    /// Absolute path
     abs: String,
+    /// Relative path
+    rel: Option<OnceCell<String>>,
 }
 
 impl PartialEq for NormarizedPath {

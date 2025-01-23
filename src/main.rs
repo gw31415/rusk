@@ -18,6 +18,7 @@ mod path;
 mod rusk;
 mod taskkey;
 
+#[cold]
 fn abort(title: &'static str, msg: impl Display, code: i32) -> ! {
     eprintln!("{}: {}", title.bold().red(), msg);
     std::process::exit(code);

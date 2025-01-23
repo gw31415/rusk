@@ -238,7 +238,9 @@ impl Debug for TaskKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskKey::Phony(phony_name) => write!(f, "{:?}", phony_name.inner),
-            TaskKey::File(normarized_path) => write!(f, "<{}>", normarized_path.as_rel_str()),
+            TaskKey::File(normarized_path) => {
+                write!(f, "{}", normarized_path.as_rel_str().bright_blue())
+            }
         }
     }
 }

@@ -55,8 +55,17 @@ async fn main() {
         }
         {
             let mut stderr = BufWriter::new(std::io::stderr().lock());
+            let errs = composer.errors_list().sorted();
+            if errs.len() != 0 {
+                writeln!(
+                    stderr,
+                    "\n{}: Cannot load files below",
+                    "warning".on_yellow().black().bold()
+                )
+                .unwrap();
+            }
             for err in composer.errors_list().sorted() {
-                writeln!(stderr, "\n{}", err.into_verbose()).unwrap();
+                writeln!(stderr, "\n  {}", err.into_verbose()).unwrap();
             }
             stderr.flush().unwrap();
         }

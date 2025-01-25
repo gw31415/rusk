@@ -69,7 +69,7 @@ impl Display for TaskErrorVerboseDisplayer<'_> {
 
                 // Indented error message
                 for line in err.lines() {
-                    "\n\t".fmt(f)?;
+                    "\n    ".fmt(f)?;
                     line.fmt(f)?;
                 }
             }

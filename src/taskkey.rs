@@ -227,7 +227,7 @@ impl AsRef<str> for TaskKey {
     fn as_ref(&self) -> &str {
         match self {
             TaskKey::Phony(phony_name) => phony_name.inner.as_str(),
-            TaskKey::File(normarized_path) => normarized_path.as_rel_str(),
+            TaskKey::File(normarized_path) => normarized_path.as_short_str(),
         }
     }
 }
@@ -243,7 +243,7 @@ impl Display for TaskKey {
         match self {
             TaskKey::Phony(phony_name) => write!(f, "{}", phony_name.inner.bright_purple().bold()),
             TaskKey::File(normarized_path) => {
-                write!(f, "{}", normarized_path.as_rel_str().bright_blue().bold())
+                write!(f, "{}", normarized_path.as_short_str().bright_blue().bold())
             }
         }
     }
@@ -260,7 +260,7 @@ impl Debug for TaskKey {
                 write!(
                     f,
                     "{}",
-                    format!("{:?}", normarized_path.as_rel_str()).bright_blue(),
+                    format!("{:?}", normarized_path.as_short_str()).bright_blue(),
                 )
             }
         }

@@ -58,7 +58,7 @@ impl Display for TaskErrorVerboseDisplayer<'_> {
                 // Error Title: Decorated path
                 inner
                     .path
-                    .as_rel_str()
+                    .as_short_str()
                     .yellow()
                     .bold()
                     .italic()
@@ -141,7 +141,7 @@ impl Display for TasksListItem<'_> {
         ' '.fmt(f)?;
 
         // (path)
-        self.path.as_rel_str().yellow().dimmed().italic().fmt(f)
+        self.path.as_short_str().yellow().dimmed().italic().fmt(f)
     }
 }
 

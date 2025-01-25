@@ -1,5 +1,3 @@
-// TODO: 内容がないファイルもタスクとして追加しておく必要はある。Dependency Errorが出るため
-
 use std::{
     cell::{Ref, RefCell},
     fmt::Debug,
@@ -158,6 +156,16 @@ fn into_executable(
             return Err(TaskParseError::DirectoryNotFound(cwd));
         }
 
+        // If dependency is a file, create a virtual TaskExecutable because it may not be actual Task
+        // TODO: Avoid instantiate TaskExecutable as much as possible
+        for dep in depends.iter() {
+            if let TaskKey::File(_) = dep {
+                parsed_tasks
+                    .entry_ref(dep)
+                    .or_insert_with(TaskExecutable::empty);
+            }
+        }
+
         parsed_tasks.insert(
             key.clone(),
             TaskExecutableInner {
@@ -193,6 +201,10 @@ async fn exec_all(roots: impl IntoIterator<Item = TaskTree>) -> TaskResult {
 struct TaskExecutable(RefCell<TaskExecutableState>);
 
 impl TaskExecutable {
+    /// Create an empty TaskExecutable which represents a virtual File Task
+    fn empty() -> Self {
+        TaskExecutable(RefCell::new(TaskExecutableState::Done(Ok(()))))
+    }
     pub async fn as_future(&self) -> TaskResult {
         let res = 'res: {
             'early_return: {
@@ -244,46 +256,61 @@ impl TaskExecutableInner {
         } = self;
 
         'check_file: {
-            if let TaskKey::File(file) = &key {
-                // Step 1: Collect dependency file Metadata Objects.
-                // If File not found, the task won't be executed. So check at this point
-                let mut dep_file_metadatas = Vec::new();
-                let dep_count = depends.len();
-                for dep in depends {
-                    if let TaskKey::File(dep_file) = dep {
-                        let Ok(metadata) = tokio::fs::metadata(&dep_file).await else {
-                            return Err(TaskError::DependencyFileNotFound {
-                                dep_file,
-                                task: key,
-                            });
-                        };
-                        dep_file_metadatas.push(metadata);
+            match &key {
+                TaskKey::File(file) => {
+                    // Step 1: Collect dependency file Metadata Objects.
+                    // If File not found, the task won't be executed. So check at this point
+                    let mut dep_file_metadatas = Vec::new();
+                    let dep_count = depends.len();
+                    for dep in depends {
+                        if let TaskKey::File(dep_file) = dep {
+                            let Ok(metadata) = tokio::fs::metadata(&dep_file).await else {
+                                return Err(TaskError::DependencyFileNotFound {
+                                    dep_file,
+                                    task: key,
+                                });
+                            };
+                            dep_file_metadatas.push(metadata);
+                        }
                     }
-                }
-                if dep_count != dep_file_metadatas.len() {
-                    // NOTE: If PhonyTask is included, the script is always executed.
-                    break 'check_file;
-                }
-
-                // Step 2: Get the metadata of the file.
-                // If file not found, it need not to check the modified datetime
-                let Ok(metadata) = tokio::fs::metadata(file).await else {
-                    break 'check_file;
-                };
-                let Ok(modified) = metadata.modified() else {
-                    return Err(TaskError::FailedToGetFileMetadata);
-                };
-
-                for dep in dep_file_metadatas {
-                    let dep_modified = dep.modified().unwrap(); // Checked above
-                    if modified <= dep_modified {
-                        // Execution is required if the dependency file has been updated
+                    if dep_count != dep_file_metadatas.len() {
+                        // NOTE: If PhonyTask is included, the script is always executed.
                         break 'check_file;
                     }
-                }
 
-                // If none have been updated
-                return Ok(());
+                    // Step 2: Get the metadata of the file.
+                    // If file not found, it need not to check the modified datetime
+                    let Ok(metadata) = tokio::fs::metadata(file).await else {
+                        break 'check_file;
+                    };
+                    let Ok(modified) = metadata.modified() else {
+                        return Err(TaskError::FailedToGetFileMetadata);
+                    };
+
+                    for dep in dep_file_metadatas {
+                        let dep_modified = dep.modified().unwrap(); // Checked above
+                        if modified <= dep_modified {
+                            // Execution is required if the dependency file has been updated
+                            break 'check_file;
+                        }
+                    }
+
+                    // If none have been updated
+                    return Ok(());
+                }
+                TaskKey::Phony(_) => {
+                    // Check only the existence of the dependency file
+                    for dep in depends {
+                        if let TaskKey::File(file) = dep {
+                            if !matches!(tokio::fs::try_exists(&file).await, Ok(true)) {
+                                return Err(TaskError::DependencyFileNotFound {
+                                    dep_file: file,
+                                    task: key,
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
         let exit_code = deno_task_shell::execute_with_pipes(
@@ -338,7 +365,8 @@ impl DigraphItem<TaskKey> for TaskExecutable {
     fn children(&self) -> impl Deref<Target = [TaskKey]> {
         Ref::map::<[TaskKey], _>(self.0.borrow(), |state| match state {
             TaskExecutableState::Initialized(inner) => inner.depends.as_slice(),
-            _ => panic!("TaskExecutable is already called"),
+            // In case of Done or Processing, there is no additional dependency
+            _ => &[],
         })
     }
 }
@@ -360,7 +388,7 @@ pub enum TaskError {
     Execution { key: TaskKey, exit_code: i32 },
     #[error("Not supported platform to get file metadata")]
     FailedToGetFileMetadata,
-    #[error("Dependency file {dep_file:?} not found which is required for {task:?} execution")]
+    #[error("Dependency file {dep_file} not found which is required for {task:?} execution")]
     DependencyFileNotFound {
         dep_file: NormarizedPath,
         task: TaskKey,

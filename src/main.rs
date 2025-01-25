@@ -9,7 +9,7 @@ use colored::Colorize;
 use fs::RuskfileComposer;
 use itertools::Itertools;
 use path::get_current_dir;
-use rusk::{Rusk, RuskError};
+use rusk::{Rusk, RuskError, TaskError};
 
 mod args;
 mod digraph;
@@ -72,7 +72,10 @@ async fn main() {
 
     if let Err(err) = res {
         let (title, code) = match &err {
-            MainError::RuskError(RuskError::TaskFailed(e)) => ("abort", e.exit_code),
+            MainError::RuskError(RuskError::TaskFailed(TaskError::Execution {
+                exit_code,
+                key: _,
+            })) => ("abort", *exit_code),
             _ => ("error", 1),
         };
         abort(title, err, code);

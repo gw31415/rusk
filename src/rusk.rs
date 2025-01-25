@@ -1,9 +1,9 @@
+// TODO: 内容がないファイルもタスクとして追加しておく必要はある。Dependency Errorが出るため
+
 use std::{
     cell::{Ref, RefCell},
     fmt::Debug,
-    future::{Future, IntoFuture},
     ops::Deref,
-    pin::Pin,
 };
 
 use deno_task_shell::{parser::SequentialList, ShellPipeReader, ShellPipeWriter, ShellState};
@@ -232,6 +232,76 @@ impl TaskExecutable {
     }
 }
 
+impl TaskExecutableInner {
+    pub async fn into_future(self) -> TaskResult {
+        let TaskExecutableInner {
+            io,
+            key,
+            envs,
+            script,
+            cwd,
+            depends,
+        } = self;
+
+        'check_file: {
+            if let TaskKey::File(file) = &key {
+                // Step 1: Collect dependency file Metadata Objects.
+                // If File not found, the task won't be executed. So check at this point
+                let mut dep_file_metadatas = Vec::new();
+                let dep_count = depends.len();
+                for dep in depends {
+                    if let TaskKey::File(dep_file) = dep {
+                        let Ok(metadata) = tokio::fs::metadata(&dep_file).await else {
+                            return Err(TaskError::DependencyFileNotFound {
+                                dep_file,
+                                task: key,
+                            });
+                        };
+                        dep_file_metadatas.push(metadata);
+                    }
+                }
+                if dep_count != dep_file_metadatas.len() {
+                    // NOTE: If PhonyTask is included, the script is always executed.
+                    break 'check_file;
+                }
+
+                // Step 2: Get the metadata of the file.
+                // If file not found, it need not to check the modified datetime
+                let Ok(metadata) = tokio::fs::metadata(file).await else {
+                    break 'check_file;
+                };
+                let Ok(modified) = metadata.modified() else {
+                    return Err(TaskError::FailedToGetFileMetadata);
+                };
+
+                for dep in dep_file_metadatas {
+                    let dep_modified = dep.modified().unwrap(); // Checked above
+                    if modified <= dep_modified {
+                        // Execution is required if the dependency file has been updated
+                        break 'check_file;
+                    }
+                }
+
+                // If none have been updated
+                return Ok(());
+            }
+        }
+        let exit_code = deno_task_shell::execute_with_pipes(
+            script,
+            ShellState::new(envs, &cwd, Default::default(), Default::default()),
+            io.stdin,
+            io.stdout,
+            io.stderr,
+        )
+        .await;
+        if exit_code == 0 {
+            Ok(())
+        } else {
+            Err(TaskError::Execution { key, exit_code })
+        }
+    }
+}
+
 /// TaskExecutable state
 enum TaskExecutableState {
     /// Task is not executed yet
@@ -264,36 +334,6 @@ impl From<TaskExecutableInner> for TaskExecutable {
     }
 }
 
-impl IntoFuture for TaskExecutableInner {
-    type Output = TaskResult;
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move {
-            let TaskExecutableInner {
-                io,
-                key,
-                envs,
-                script,
-                cwd,
-                ..
-            } = self;
-            let exit_code = deno_task_shell::execute_with_pipes(
-                script,
-                ShellState::new(envs, &cwd, Default::default(), Default::default()),
-                io.stdin,
-                io.stdout,
-                io.stderr,
-            )
-            .await;
-            if exit_code == 0 {
-                Ok(())
-            } else {
-                Err(TaskError { key, exit_code })
-            }
-        })
-    }
-}
-
 impl DigraphItem<TaskKey> for TaskExecutable {
     fn children(&self) -> impl Deref<Target = [TaskKey]> {
         Ref::map::<[TaskKey], _>(self.0.borrow(), |state| match state {
@@ -314,12 +354,17 @@ pub enum TaskParseError {
     ScriptParseError { key: TaskKey, error: anyhow::Error },
 }
 
-/// Task execution error
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("Task {key:?} failed with exit code {exit_code}")]
-pub struct TaskError {
-    pub key: TaskKey,
-    pub exit_code: i32,
+pub enum TaskError {
+    #[error("Task {key:?} failed with exit code {exit_code}")]
+    Execution { key: TaskKey, exit_code: i32 },
+    #[error("Not supported platform to get file metadata")]
+    FailedToGetFileMetadata,
+    #[error("Dependency file {dep_file:?} not found which is required for {task:?} execution")]
+    DependencyFileNotFound {
+        dep_file: NormarizedPath,
+        task: TaskKey,
+    },
 }
 
 /// Task result alias

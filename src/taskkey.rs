@@ -249,19 +249,18 @@ impl Display for TaskKey {
     }
 }
 
+// NOTE: Used as a means (hack-like) to display in the digraph module and to distinguish it from Display.
 impl Debug for TaskKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskKey::Phony(phony_name) => {
-                write!(f, "{:?}", phony_name.inner.bright_purple())
+                write!(f, "{}", format!("{:?}", phony_name.inner).bright_purple())
             }
             TaskKey::File(normarized_path) => {
                 write!(
                     f,
-                    "{}{}{}",
-                    "[".bright_blue(),
-                    normarized_path.as_rel_str().bright_blue(),
-                    "]".bright_blue()
+                    "{}",
+                    format!("{:?}", normarized_path.as_rel_str()).bright_blue(),
                 )
             }
         }

@@ -1,8 +1,12 @@
 [package]
-name = "rusk"
+name = "rusk-task"
 version = "0.1.0"
 edition = "2021"
 resolver = "3"
+
+[[bin]]
+name = "rusk"
+path = "src/main.rs"
 
 [dependencies]
 deno_task_shell = "0.20.3"

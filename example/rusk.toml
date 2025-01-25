@@ -35,3 +35,6 @@ echo 'subsub called'
 sleep 0.3
 echo 'subsub done, then sub1&sub2 allowed to continue'
 '''
+
+[tasks.'/a']
+depends = ['./hoge']

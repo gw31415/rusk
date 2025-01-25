@@ -388,7 +388,7 @@ pub enum TaskError {
     Execution { key: TaskKey, exit_code: i32 },
     #[error("Not supported platform to get file metadata")]
     FailedToGetFileMetadata,
-    #[error("Dependency file {dep_file} not found which is required for {task:?} execution")]
+    #[error("Dependency file {dep_file} is not found which is required for {task:?} execution")]
     DependencyFileNotFound {
         dep_file: NormarizedPath,
         task: TaskKey,

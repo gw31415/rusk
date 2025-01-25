@@ -41,7 +41,7 @@ impl<'a> TasksListItem<'a> {
     /// Write verbose error
     pub fn into_verbose(self) -> impl Display + 'a {
         if self.content.is_ok() {
-            panic!("TasksListItem::verbose() is not for Ok variant");
+            panic!("Programming Error: TasksListItem::verbose() is not for Ok variant");
         }
         TaskErrorVerboseDisplayer(self)
     }
@@ -127,7 +127,7 @@ impl Display for TasksListItem<'_> {
                 writet!(key);
                 if let Some(description) = description {
                     // (description)
-                    writet!(description.bold());
+                    writet!(description.italic().bright_green());
                 }
             }
             Err(_) => {

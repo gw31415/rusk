@@ -36,19 +36,19 @@ impl TryFrom<String> for PhonyTaskString {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() {
-            return Err(PhonyTaskStringParseError("empty string is not allowed"));
+            return Err(PhonyTaskStringParseError("Empty string is not allowed"));
         }
         let mut chars = value.chars();
         let first = chars.next().unwrap();
         if !first.is_ascii_alphabetic() {
             return Err(PhonyTaskStringParseError(
-                "first character must be alphabetic",
+                "First character must be alphabetic",
             ));
         }
         for c in chars {
             if !c.is_ascii_alphanumeric() && c != '_' && c != '-' {
                 return Err(PhonyTaskStringParseError(
-                    "only /^[a-zA-Z][a-zA-Z0-9_-]*$/ is allowed",
+                    "Only /^[a-zA-Z][a-zA-Z0-9_-]*$/ is allowed",
                 ));
             }
         }
@@ -79,7 +79,7 @@ impl TryFrom<String> for PathTaskString {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() {
-            return Err(PathTaskStringParseError("empty string is not allowed"));
+            return Err(PathTaskStringParseError("Empty string is not allowed"));
         }
         if value.contains('/') || value.contains('.') {
             Ok(PathTaskString { inner: value })
@@ -241,9 +241,9 @@ impl PartialEq for TaskKey {
 impl Display for TaskKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskKey::Phony(phony_name) => write!(f, "{}", phony_name.inner),
+            TaskKey::Phony(phony_name) => write!(f, "{}", phony_name.inner.bright_purple().bold()),
             TaskKey::File(normarized_path) => {
-                write!(f, "{}", normarized_path.as_rel_str().bright_blue())
+                write!(f, "{}", normarized_path.as_rel_str().bright_blue().bold())
             }
         }
     }
@@ -252,9 +252,17 @@ impl Display for TaskKey {
 impl Debug for TaskKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskKey::Phony(phony_name) => write!(f, "{:?}", phony_name.inner),
+            TaskKey::Phony(phony_name) => {
+                write!(f, "{:?}", phony_name.inner.bright_purple())
+            }
             TaskKey::File(normarized_path) => {
-                write!(f, "{}", normarized_path.as_rel_str().bright_blue())
+                write!(
+                    f,
+                    "{}{}{}",
+                    "[".bright_blue(),
+                    normarized_path.as_rel_str().bright_blue(),
+                    "]".bright_blue()
+                )
             }
         }
     }

@@ -20,9 +20,9 @@ cargo install --git https://github.com/gw31415/rusk-task
 - **Task naming conventions** determine whether a target is a file or a phony:
   - File target: Contains `/` or `.` in its name.
   - Phony target: Starts with a letter, followed by letters, digits, `-`, or `_` (matching `/^[a-zA-Z][a-zA-Z0-9_-]*$/`).
-- Searches for a `rusk.toml` configuration file in descendant directories.
+- Searches for `rusk.toml` configuration files in **descendant directories**.
   - Relative paths in a config file are resolved from that config file’s location.
-- Independently defined tasks run **in parallel** whenever possible.
+- Independently defined tasks run **in concurrent** whenever possible.
 - Supports multiple environments via `deno_task_shell`.
 
 ## Comparison with Alternatives

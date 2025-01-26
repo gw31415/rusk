@@ -5,7 +5,9 @@ use colored::Colorize;
 use futures::future::join_all;
 use hashbrown::{hash_map::EntryRef, HashMap};
 use ignore::{WalkBuilder, WalkState};
+use itertools::Itertools;
 use toml::Table;
+use unicode_width::UnicodeWidthStr;
 
 use crate::{
     path::NormarizedPath,
@@ -35,6 +37,52 @@ pub struct TasksListItem<'a> {
     content: Result<TaskListItemContent<'a>, &'a str>,
     /// Path to rusk.toml
     path: &'a NormarizedPath,
+}
+
+/// Display TasksListItem for tty
+pub struct TasksListItemPretty<'a> {
+    inner: TasksListItem<'a>,
+    task_word_width: usize,
+}
+
+impl Display for TasksListItemPretty<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let TasksListItem { content, path } = &self.inner;
+        ////////////////////////////////////////////////
+        //
+        // Format:
+        //     (task_name)  (description)"  in "(path)
+        //
+        ////////////////////////////////////////////////
+
+        let width = self.task_word_width + 2;
+        match content {
+            Ok(TaskListItemContent { key, description }) => {
+                // (task_name)
+                let task_key = key.as_task_key();
+                write!(f, "{}", task_key)?;
+                for _ in 0..width - task_key.as_ref().width() {
+                    ' '.fmt(f)?;
+                }
+                if let Some(description) = description {
+                    // (description)
+                    write!(f, "{}  ", description.green().italic())?;
+                }
+            }
+            Err(_) => {
+                // (task_name): Undefined Task
+                write!(f, "{:width$}  ", "(null)".dimmed().italic(), width = width)?;
+            }
+        }
+
+        // "in "
+        "in".dimmed().italic().fmt(f)?;
+        ' '.fmt(f)?;
+
+        // (path)
+        path.as_short_str().yellow().dimmed().italic().fmt(f)?;
+        Ok(())
+    }
 }
 
 impl<'a> TasksListItem<'a> {
@@ -127,21 +175,20 @@ impl Display for TasksListItem<'_> {
                 writet!(key);
                 if let Some(description) = description {
                     // (description)
-                    writet!(description.italic().bright_green());
+                    writet!(description);
                 }
             }
             Err(_) => {
                 // (task_name): Undefined Task
-                writet!("(null)".dimmed().italic());
+                writet!("(null)");
             }
         }
 
         // "in "
-        "in".dimmed().italic().fmt(f)?;
-        ' '.fmt(f)?;
+        "in ".fmt(f)?;
 
         // (path)
-        self.path.as_short_str().yellow().dimmed().italic().fmt(f)
+        self.path.as_short_str().fmt(f)
     }
 }
 
@@ -167,6 +214,25 @@ impl RuskfileComposer {
                 _ => None,
             })
             .flatten()
+    }
+    /// List all tasks with pretty format & sorted
+    pub fn tasks_list_pretty(&self) -> impl Iterator<Item = TasksListItemPretty<'_>> {
+        let tasks: Vec<_> = self.tasks_list().sorted().collect();
+        let task_word_width = tasks
+            .iter()
+            .map(|a| {
+                if let Ok(content) = &a.content {
+                    content.key.as_task_key().as_ref().width()
+                } else {
+                    0
+                }
+            })
+            .max()
+            .unwrap_or_default();
+        tasks.into_iter().map(move |a| TasksListItemPretty {
+            inner: a,
+            task_word_width,
+        })
     }
     /// List all errors
     pub fn errors_list(&self) -> impl Iterator<Item = TasksListItem<'_>> {

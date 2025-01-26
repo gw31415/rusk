@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    io::{BufWriter, Write},
+    io::{BufWriter, IsTerminal, Write},
     time::Duration,
 };
 
@@ -47,9 +47,17 @@ async fn main() {
 
     if args.no_pargs() {
         {
-            let mut stdout = BufWriter::new(std::io::stdout().lock());
-            for task in composer.tasks_list().sorted() {
-                writeln!(stdout, "{}", task).unwrap();
+            let stdout = std::io::stdout();
+            let is_tty = stdout.is_terminal();
+            let mut stdout = BufWriter::new(stdout.lock());
+            if is_tty {
+                for task in composer.tasks_list_pretty() {
+                    writeln!(stdout, "{}", task).unwrap();
+                }
+            } else {
+                for task in composer.tasks_list() {
+                    writeln!(stdout, "{}", task).unwrap();
+                }
             }
             stdout.flush().unwrap();
         }

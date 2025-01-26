@@ -1,6 +1,7 @@
 # rusk-task
 
 An asynchronous task runner in Rust, aiming to be a “simpler Make.”
+![demo](https://github.com/user-attachments/assets/ee622cc9-8ebd-4ade-8cee-062e9eb8e2b3)
 
 ## Concept
 

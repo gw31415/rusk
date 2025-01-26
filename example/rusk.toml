@@ -1,18 +1,13 @@
-[tasks.all]
-depends = ['single', 'async']
+# Config file must be named 'rusk.toml', '.rusk.toml' or '*.rusk.toml' (glob pattern)
 
-[tasks.single]
-# depends = ['all'] # uncomment this line to see the error
-script = "echo 'single start' && sleep 1.5 && echo 'single done'"
-
-[tasks.async]
+[tasks.main]
 script = '''
 echo 'sub1 & sub2 done'
 '''
 depends = ['sub1', 'sub2']
 
 [tasks.sub1]
-description = 'sub task 1'
+description = 'description 1'
 depends = ['subsub']
 script = '''
 echo 'sub1 start'
@@ -21,7 +16,7 @@ echo 'sub1 done'
 '''
 
 [tasks.'sub2']
-description = 'sub task 2'
+description = 'description 2'
 depends = ['subsub']
 script = '''
 echo 'sub2 start'
@@ -36,5 +31,8 @@ sleep 0.3
 echo 'subsub done, then sub1&sub2 allowed to continue'
 '''
 
-[tasks.'/a']
-depends = ['./hoge']
+# File-type tasks contains '.' or '/'
+[tasks.'file.txt']
+script = "touch file.txt"
+
+# [tasks.'./Makefile']

@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt::Display, path::Path};
+use std::{borrow::Cow, ffi::OsStr, fmt::Display, path::Path};
 
 use anyhow::Error;
 use colored::Colorize;
@@ -330,7 +330,7 @@ impl TryFrom<RuskfileComposer> for HashMap<TaskKey, Task> {
                         e.insert(Task {
                             envs,
                             script,
-                            cwd: configfile_dir.join(cwd).into(),
+                            cwd: configfile_dir.join(cwd.as_ref()).into(),
                             depends: depends
                                 .into_iter()
                                 .map(|key| key.into_task_key(&configfile_dir))
@@ -376,7 +376,7 @@ struct TaskDeserializerInner {
     depends: Vec<TaskKeyRelative>,
     /// Working directory
     #[serde(default)]
-    cwd: String,
+    cwd: Cow<'static, str>,
 }
 
 impl Default for TaskDeserializerInner {
@@ -385,7 +385,7 @@ impl Default for TaskDeserializerInner {
             envs: Default::default(),
             script: Default::default(),
             depends: Default::default(),
-            cwd: ".".to_string(),
+            cwd: Cow::Borrowed("."),
         }
     }
 }

@@ -273,7 +273,7 @@ impl TaskExecutableInner {
                             dep_file_metadatas.push(metadata);
                         }
                     }
-                    if dep_count == 0 || dep_count != dep_file_metadatas.len() {
+                    if dep_count != dep_file_metadatas.len() {
                         // NOTE: If PhonyTask is included, the script is always executed.
                         break 'check_file;
                     }
